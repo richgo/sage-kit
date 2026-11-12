@@ -11,7 +11,10 @@ replays the check and the independent verifier. A hosted agent run requires
 the ForgeKit caller's configured native harness and approved credentials.
 
 At pipeline start, hash the exact approved input files with SHA-256 and write
-a JSON object mapping input names to their hashes. Pin it to the corpus.
+a JSON object mapping workspace-relative input paths to their hashes. The pin
+binds both the corpus revision and the embedding profile. Make the approved
+files available in the check workspace and declare them as inputs in the
+consuming APMX contract so the verifier can recompute every digest.
 
 ```sh
 sagekit pin approved-input-digests.json > sagekit-pin.json
@@ -29,7 +32,9 @@ A policy takes a `stage`, contextual `query`, optional `minimum_evidence`
 typed `decision` request. The caller computes the expected input digests from
 the approved artifacts. Each stage's context points to immutable source
 revisions. The parent pipeline's independent verification remains the
-authority for release and completion.
+authority for release and completion. The APMX handoff includes evidence and
+decision availability. The separate CLI or API audit envelope carries any
+model advice.
 
 ## Promote verified changes
 
@@ -42,7 +47,7 @@ Use the following shape with the actual pin and evidence SHA-256.
   "schema": 1,
   "pipeline": "owner/repository",
   "run": "123456789",
-  "pin": {"schema": 1, "revision": "<corpus revision>", "inputs": {}, "id": "<pin ID>"},
+  "pin": {"schema": 1, "revision": "<corpus revision>", "inputs": {}, "embedding_profile": "<profile ID>", "id": "<pin ID>"},
   "status": "success",
   "approved": true,
   "independently_verified": true,
@@ -60,11 +65,13 @@ Use the following shape with the actual pin and evidence SHA-256.
 For GitHub Actions, have the protected verifier attest `promotion.json`
 and upload it as `sagekit-verified-promotion` in the same run. Call the
 [reusable promotion workflow](../.github/workflows/promote.yml) from a job
-that depends on successful verification, with immutable SageKit and verifier
-commits. Configure the `sagekit-promotion` environment to require approval
-and restrict deployments to the protected main branch. Store
+that depends on successful verification. Configure the `sagekit-promotion`
+environment to require approval and restrict deployments to protected main.
+Set its protected variables `SAGEKIT_REVISION`, `SAGEKIT_VERIFIER_WORKFLOW`,
+`SAGEKIT_VERIFIER_DIGEST`, and `SAGEKIT_REMOTE_URL` to the reviewed commits,
+the full signer workflow path, and the authorized HTTPS origin. Store
 `SAGEKIT_RECEIPT_KEY` (at least 32 random bytes of text) and
-`SAGEKIT_PROMOTION_TOKEN` in that environment. Configure the same receipt
+`SAGEKIT_PROMOTION_TOKEN` as environment secrets. Configure the same receipt
 key at the SageKit service. The publishing job verifies the artifact's
 attestation against the source commit, signing workflow, and signing
 workflow commit before using these credentials. Keep signing credentials

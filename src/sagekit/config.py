@@ -49,7 +49,10 @@ def create_application(root: Path) -> Application:
     fallback = None
     endpoint = os.getenv("SAGEKIT_JEV_URL")
     if endpoint:
-        fallback = JevProvider(endpoint, os.getenv("TYPESAFE_API_KEY"), os.getenv("SAGEKIT_JEV_MODEL"))
+        fallback = JevProvider(
+            endpoint, os.getenv("TYPESAFE_API_KEY"), os.getenv("SAGEKIT_JEV_MODEL"),
+            allow_restricted_evidence=os.getenv("SAGEKIT_JEV_RESTRICTED_EVIDENCE") == "1",
+        )
     precedent = VennProvider() if os.getenv("SAGEKIT_VENN") == "1" else None
     search = Search(repo, embedder, vectors)
     secret = os.getenv("SAGEKIT_RECEIPT_KEY")

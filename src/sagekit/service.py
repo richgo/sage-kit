@@ -69,6 +69,19 @@ def service(application, credentials, host="127.0.0.1", port=8765):
         def do_POST(self):
             scheme, _, token = self.headers.get("Authorization", "").partition(" ")
             principal = auth.authenticate(token) if scheme.lower() == "bearer" else None
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 0 < length <= MAX_BODY:
+                    raise ValueError("invalid request size")
+                body = self.rfile.read(length)
+            except (ValueError, OSError):
+                if principal is None:
+                    self.reply(401, {"error": "authentication required"})
+                else:
+                    self.reply(400, {"error": "invalid request size"})
+                return
+            # Drain the bounded POST body before closing rejected connections.
+            # Windows can reset the connection if unread request bytes remain.
             if principal is None:
                 self.reply(401, {"error": "authentication required"})
                 return
@@ -76,10 +89,9 @@ def service(application, credentials, host="127.0.0.1", port=8765):
                 self.reply(404, {"error": "unknown operation"})
                 return
             try:
-                length = int(self.headers.get("Content-Length", "0"))
-                if not 0 < length <= MAX_BODY:
-                    raise ValueError("invalid request size")
-                data = json.loads(self.rfile.read(length))
+                if len(body) != length:
+                    raise ValueError("incomplete request body")
+                data = json.loads(body)
                 if not isinstance(data, dict):
                     raise ValueError("expected a JSON object")
                 result = application.dispatch(self.path[4:], data, principal)

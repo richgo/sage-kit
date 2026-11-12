@@ -20,7 +20,8 @@ class GateTests(unittest.TestCase):
         self.identity = Principal(scopes=frozenset({"promote"}))
         self.evidence = record()
         revision = self.repo.append(self.evidence)
-        self.pin = pin(revision, {"requirements": digest("requirements"), "architecture": digest("design")})
+        self.pin = pin(revision, {"requirements": digest("requirements"), "architecture": digest("design")},
+                       self.app.search.embedder.profile.key)
         self.payload = {
             "schema": 1, "pipeline": "forgekit", "run": "run-42", "pin": self.pin,
             "status": "success", "approved": True, "independently_verified": True,
@@ -40,6 +41,8 @@ class GateTests(unittest.TestCase):
         bad = {**self.pin, "revision": self.repo.snapshot()}
         self.assertFalse(self.app.gate_check(self.identity, policy, bad)["allowed"])
         self.assertTrue(self.app.gate_check(self.identity, {**policy, "mode": "advisory"}, bad)["allowed"])
+        different_profile = pin(self.pin["revision"], self.pin["inputs"], digest("different-profile"))
+        self.assertFalse(self.app.gate_check(self.identity, policy, different_profile)["allowed"])
 
     def test_promotion_is_signed_idempotent_and_rejects_conflicting_run(self):
         with self.assertRaises(ValueError):

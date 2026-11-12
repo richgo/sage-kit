@@ -36,10 +36,12 @@ def parse_answer(request: DecisionRequest, raw: dict) -> dict:
 class JevProvider:
     """TypeSafe System One protocol, shared with local Jev-compatible endpoints."""
 
-    def __init__(self, endpoint: str, api_key: str | None, model: str | None = None):
+    def __init__(self, endpoint: str, api_key: str | None, model: str | None = None,
+                 *, allow_restricted_evidence: bool = False):
         self.local = check_endpoint(endpoint)
         if not self.local and not api_key:
             raise ValueError("hosted Jev requires an API key")
+        self.allow_restricted_evidence = self.local and allow_restricted_evidence
         self.endpoint = endpoint
         self.api_key = api_key
         self.model = model
@@ -51,7 +53,7 @@ class JevProvider:
         question = {"type": request.kind, "instructions": request.instructions}
         if request.criteria is not None:
             question["criteria"] = request.criteria
-        records = [item["record"] for item in evidence if self.local or not item["record"]["acl"]]
+        records = [item["record"] for item in evidence if self.allow_restricted_evidence or not item["record"]["acl"]]
         payload = {"state": {"context": request.state, "evidence": records},
                    "questions": {"sagekit": question}}
         if self.model:

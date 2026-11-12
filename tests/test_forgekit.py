@@ -25,9 +25,13 @@ class ForgeKitLifecycle(unittest.TestCase):
             repo.append(precedent)
             inputs = {name: hashlib.sha256((forge / name).read_bytes()).hexdigest()
                       for name in ("examples/requirements.json", "architecture/slice.json")}
-            pinned = pin(repo.snapshot(), inputs)
             key = b"fixture-protected-signer-key-at-least-32"
             app = Application(repo, receipt_key=key)
+            pinned = pin(repo.snapshot(), inputs, app.search.embedder.profile.key)
+            for name in inputs:
+                target = root / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes((forge / name).read_bytes())
             principal = Principal(scopes=frozenset({"promote"}))
             policy = {"mode": "required", "stage": "architecture", "query": precedent.id,
                       "exact_ids": [precedent.id], "inputs": inputs}
@@ -41,8 +45,13 @@ class ForgeKitLifecycle(unittest.TestCase):
             subprocess.run(runner + ["--check"], cwd=root, check=True, capture_output=True)
             report = root / "sagekit-context.json"
             forged = json.loads(report.read_text(encoding="utf-8"))
-            forged["snapshot"] = "0" * 64
+            forged["decision"] = {"value": "forged"}
+            forged["allowed"] = False
             report.write_text(json.dumps(forged), encoding="utf-8")
+            rejected = subprocess.run(runner + ["--check"], cwd=root, capture_output=True)
+            self.assertNotEqual(0, rejected.returncode)
+            subprocess.run(runner, cwd=root, check=True, capture_output=True)
+            (root / "architecture/slice.json").write_text("{}", encoding="utf-8")
             rejected = subprocess.run(runner + ["--check"], cwd=root, capture_output=True)
             self.assertNotEqual(0, rejected.returncode)
 

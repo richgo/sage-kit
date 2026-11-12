@@ -66,14 +66,17 @@ pipeline's evidence artifacts if retention is required.
   is sent to the configured endpoint. Restricted corpus records are omitted.
 - Start a local System One compatible provider such as JevForge and set
   `SAGEKIT_JEV_URL=http://127.0.0.1:8123/v1/systemone`. The same adapter
-  validates Choice, Score, and Noul responses. Loopback providers receive
-  the caller's visible corpus evidence.
+  validates Choice, Score, and Noul responses. Both transports omit restricted
+  records by default. Set `SAGEKIT_JEV_RESTRICTED_EVIDENCE=1` only for a trusted
+  loopback server whose retention and logs are approved for restricted data.
 - Set `SAGEKIT_VENN=1` to enable upstream Venn's outcome service. Use Python
   3.12 for the pinned upstream package and install it with the command below.
   The outcome path uses tagged vectors and requires no downloaded Venn model
   weights. Venn compares a Choice only when each alternative has sufficient
   similar measured cases for the same family and utility metric. Utility ties
   and insufficient history fall back to Jev, or abstain if it is unavailable.
+  Requests with a positive probability confidence threshold go directly to
+  Jev because Venn reports observed utility.
 
 ```sh
 python -m pip install 'venn-vdm @ git+https://github.com/markrussinovich/venn-vdm.git@ad97513f1cc1fc5abc886f195d17e6145776e091'

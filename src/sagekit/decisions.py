@@ -112,7 +112,9 @@ class Router:
         evidence = self.search.query(request.instructions, revision=revision, groups=groups)
         envelope["evidence"] = [{"id": hit["record"]["id"], "source": hit["record"]["source"]}
                                 for hit in evidence]
-        if self.precedent and request.family:
+        if self.precedent and request.family and request.minimum_confidence > 0:
+            envelope["attempts"].append({"provider": "venn", "status": "uncalibrated"})
+        elif self.precedent and request.family:
             cases = eligible_cases(repo, revision, groups, request.family, request.metric, request.criteria)
             try:
                 result = self.precedent.decide(request, cases, self.search.embedder) if cases else None

@@ -24,9 +24,10 @@ class ServiceTests(unittest.TestCase):
                 try:
                     url = f"http://127.0.0.1:{server.server_port}/v1/"
                     secret = record(acl=("sre",)).as_dict()
-                    with self.assertRaises(HTTPError) as error:
-                        post_json(url + "list", {})
-                    self.assertEqual(401, error.exception.code)
+                    for _ in range(25):
+                        with self.assertRaises(HTTPError) as error:
+                            post_json(url + "list", {})
+                        self.assertEqual(401, error.exception.code)
                     with self.assertRaises(HTTPError) as error:
                         post_json(url + "add", {"record": secret}, "reader")
                     self.assertEqual(403, error.exception.code)

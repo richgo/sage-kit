@@ -1,3 +1,4 @@
+from dataclasses import replace
 from pathlib import Path
 import tempfile
 import unittest
@@ -58,6 +59,10 @@ class DecisionTests(unittest.TestCase):
             self.assertEqual("abstained", router.decide(request)["status"])
             outcome = observe(repo, choice.id, verified.id, "reliability", 0.95, source)
             self.assertEqual("venn", router.decide(request)["provider"])
+            self.assertEqual([outcome], calls)
+            result = router.decide(replace(request, minimum_confidence=0.5))
+            self.assertEqual("abstained", result["status"])
+            self.assertEqual([{"provider": "venn", "status": "uncalibrated"}], result["attempts"])
             self.assertEqual([outcome], calls)
 
     def test_private_evidence_is_excluded_from_hosted_jev(self):

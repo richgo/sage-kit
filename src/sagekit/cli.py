@@ -90,8 +90,8 @@ def run(args):
     if name == "snapshot":
         return dispatch(name, {})
     if name == "pin":
-        revision = args.revision or dispatch("snapshot", {})["revision"]
-        return pin(revision, load(args.file))
+        current = dispatch("snapshot", {})
+        return pin(args.revision or current["revision"], load(args.file), current["embedding_profile"])
     if name == "list":
         return dispatch(name, {"revision": args.revision, "history": args.history})
     if name == "query":

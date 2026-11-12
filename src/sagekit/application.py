@@ -42,7 +42,8 @@ class Application:
         return handlers[operation](principal, **params)
 
     def snapshot(self, principal):
-        return {"revision": self.repo.snapshot()}
+        return {"revision": self.repo.snapshot(),
+                "embedding_profile": self.search.embedder.profile.key}
 
     def list(self, principal, revision=None, history=False):
         if type(history) is not bool:

@@ -6,16 +6,18 @@ from .decisions import DecisionRequest, text
 from .model import Record, Source, digest, encode, is_digest
 
 
-def pin(revision: str, inputs: dict) -> dict:
-    if (not is_digest(revision) or not isinstance(inputs, dict) or not inputs
+def pin(revision: str, inputs: dict, embedding_profile: str) -> dict:
+    if (not is_digest(revision) or not is_digest(embedding_profile)
+            or not isinstance(inputs, dict) or not inputs
             or not all(text(name) and is_digest(value) for name, value in inputs.items())):
-        raise ValueError("pin requires a corpus revision and SHA-256 digests of approved inputs")
-    payload = {"schema": 1, "revision": revision, "inputs": inputs}
+        raise ValueError("pin requires a corpus revision, embedding profile and SHA-256 digests of approved inputs")
+    payload = {"schema": 1, "revision": revision, "inputs": inputs,
+               "embedding_profile": embedding_profile}
     return {**payload, "id": digest(payload)}
 
 
 def validate_pin(value: dict) -> str:
-    if not isinstance(value, dict) or value != pin(value.get("revision"), value.get("inputs")):
+    if not isinstance(value, dict) or value != pin(value.get("revision"), value.get("inputs"), value.get("embedding_profile")):
         raise ValueError("invalid corpus pin")
     return value["revision"]
 
@@ -57,6 +59,8 @@ def check_gate(app, principal, policy: dict, pinned: dict | None) -> dict:
     envelope = gate_envelope(policy)
     try:
         revision = validate_pin(pinned)
+        if pinned["embedding_profile"] != app.search.embedder.profile.key:
+            raise ValueError("embedding profile differs from the pinned profile")
         if "inputs" in policy and policy["inputs"] != pinned["inputs"]:
             raise ValueError("approved inputs differ")
         records = {record.id: record for record in app.repo.records(revision, principal.groups)}
