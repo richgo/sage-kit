@@ -3,10 +3,11 @@ import json
 import os
 from pathlib import Path
 import sqlite3
+from urllib.error import HTTPError
 
 from .application import Principal
 from .config import create_application
-from .gates import pin, signed
+from .gates import gate_unavailable, pin, signed, skipped_gate
 from .ingest import ingest
 from .maintenance import backup, benchmark, reindex, restore
 from .service import Remote, SCOPES, service
@@ -56,6 +57,10 @@ def load(path):
 
 def run(args):
     name = args.command
+    if name == "gate-check":
+        policy = load(args.file)
+        if isinstance(policy, dict) and policy.get("mode", "off") == "off":
+            return skipped_gate(policy.get("stage"))
     if name == "sign-receipt":
         return signed(load(args.file), os.environ["SAGEKIT_RECEIPT_KEY"].encode())
     if args.remote and args.group:
@@ -96,7 +101,15 @@ def run(args):
                         acl=tuple(args.acl), supersedes=args.supersedes)
         return dispatch("add", {"record": record.as_dict()})
     if name == "gate-check":
-        return dispatch(name, {"policy": load(args.file), "pin": load(args.pin) if args.pin else None})
+        params = {"policy": policy, "pin": load(args.pin) if args.pin else None}
+        try:
+            return dispatch(name, params)
+        except HTTPError as exc:
+            if exc.code < 500:
+                raise
+            return gate_unavailable(policy, "knowledge service unavailable")
+        except (OSError, sqlite3.Error):
+            return gate_unavailable(policy, "knowledge service unavailable")
     if name == "decide":
         return dispatch(name, {"request": load(args.file), "revision": args.revision})
     if name == "add":

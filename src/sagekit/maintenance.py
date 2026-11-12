@@ -24,7 +24,7 @@ def restore(repo: LocalRepository, source: Path) -> dict:
         if existing:
             raise ValueError("restore requires an empty corpus")
         atomic_text(repo.journal, contents)
-    return {"revision": repo.snapshot(), "events": len(events)}
+    return {"revision": events[-1]["revision"] if events else EMPTY_REVISION, "events": len(events)}
 
 
 def reindex(app, groups, revision=None) -> dict:

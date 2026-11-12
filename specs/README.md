@@ -44,3 +44,29 @@ SageKit is a portable, read-write engineering knowledge and decision platform. T
 ## Implementation discipline
 
 No placeholder features. A specification is complete only with source, docs, unit/contract/integration tests, negative tests, and verified CI evidence. Develop increments in ordered PRs, preserve upstream model and licence constraints, and do not bypass protected ForgeKit verification gates.
+
+## Implementation and verification map
+
+| ID | Delivered behavior | Verification |
+| --- | --- | --- |
+| 000 | Installable wheel and CLI, Windows/Linux CI, example fixtures | Installed-wheel matrix |
+| 001 | Content IDs, versioned sources, relationship visibility, supersession | Foundation and edge-case tests |
+| 002 | Git-trackable hash chain, rebuildable SQLite projection, PostgreSQL events | Foundation, concurrency and PostgreSQL integration tests |
+| 003 | Immutable profile identities, FAISS, Qdrant and pgvector adapters | Shared vector contract against each backend |
+| 004 | Requirements, CALM, LikeC4, ADR and incident import | Ingestion and malformed-input tests |
+| 005 | Exact and vector evidence retrieval with ACLs and revision citations | Retrieval and vector filtering tests |
+| 006 | Choice, Score, Noul, deterministic constraints, audit envelopes and abstention | Decision and provider tests |
+| 007 | Hosted TypeSafe and local System One compatible transport | HTTP and response-shape tests |
+| 008 | Upstream Venn outcome route with support, similarity and profile checks | Upstream Venn integration and routing tests |
+| 009 | Separate approval, independent verification and operational utility | Outcome eligibility and promotion tests |
+| 010 | Public HTML/JSON export and manual Pages workflow | Static export and ACL tests |
+| 011 | Scoped REST, remote CLI transport and authenticated stdio MCP | HTTP ACL and MCP integration tests |
+| 012 | Versioned ForgeKit APM/APMX package and independent acceptance replay | Pinned ForgeKit fixture and contextual check replay |
+| 013 | Backup/restore, side-by-side profile reindexing, benchmark command, security regressions | Recovery and profile tests |
+| 014 | Optional gates, input and corpus pinning, signed post-success promotion | Gate, replay, tamper and full fixture lifecycle tests |
+
+The [operator guide](../docs/operation.md) covers service and model deployment.
+The [ForgeKit guide](../docs/forgekit.md) covers the protected publisher and
+its attestation requirements. Hosted Jev inference, a production ForgeKit
+run, and publication to a configured Pages environment require deployment
+credentials and infrastructure.

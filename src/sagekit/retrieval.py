@@ -1,3 +1,4 @@
+from .model import is_digest
 from .repository import Repository
 from .vectors import Embedder, HashEmbedder, MemoryVectors, VectorStore, words
 
@@ -23,7 +24,7 @@ class Search:
             record.id, record.title.casefold(), record.source.uri.casefold(),
             str(record.metadata.get("external_id", "")).casefold(),
         })
-        ids = set(records) - set(exact)
+        ids = set() if is_digest(folded) else set(records) - set(exact)
         tokens = set(words(query))
         if self.embedder.profile == HashEmbedder.profile:
             # A hash collision alone is insufficient evidence.

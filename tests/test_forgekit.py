@@ -1,7 +1,9 @@
 import hashlib
+import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -30,6 +32,19 @@ class ForgeKitLifecycle(unittest.TestCase):
             policy = {"mode": "required", "stage": "architecture", "query": precedent.id,
                       "exact_ids": [precedent.id], "inputs": inputs}
             self.assertTrue(app.gate_check(principal, policy, pinned)["allowed"])
+
+            check = Path(__file__).resolve().parents[1] / "integrations/forgekit/checks/contextual_gate.py"
+            (root / "sagekit-pin.json").write_text(json.dumps(pinned), encoding="utf-8")
+            (root / "sagekit-policy.json").write_text(json.dumps(policy), encoding="utf-8")
+            runner = [sys.executable, str(check)]
+            subprocess.run(runner, cwd=root, check=True, capture_output=True)
+            subprocess.run(runner + ["--check"], cwd=root, check=True, capture_output=True)
+            report = root / "sagekit-context.json"
+            forged = json.loads(report.read_text(encoding="utf-8"))
+            forged["snapshot"] = "0" * 64
+            report.write_text(json.dumps(forged), encoding="utf-8")
+            rejected = subprocess.run(runner + ["--check"], cwd=root, capture_output=True)
+            self.assertNotEqual(0, rejected.returncode)
 
             command = ["node", str(forge / "factory/cli.mjs")]
             subprocess.run(command + ["run", str(output)], cwd=forge, check=True, capture_output=True)

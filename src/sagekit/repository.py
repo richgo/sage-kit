@@ -58,7 +58,7 @@ def parse_journal(contents: str) -> list[dict]:
     parent = EMPTY_REVISION
     previous = {}
     replaced = set()
-    for line in contents.splitlines():
+    for line in contents.removesuffix("\n").split("\n") if contents else ():
         event = json.loads(line)
         record = Record.from_dict(event["record"])
         if event != make_event(record, parent) or record.id in previous:
@@ -105,9 +105,13 @@ class LocalRepository:
                     record_id TEXT UNIQUE NOT NULL, payload TEXT NOT NULL)""")
                 contents = self.journal.read_text(encoding="utf-8") if self.journal.exists() else ""
                 events = parse_journal(contents)
-                revisions = [row[0] for row in db.execute(
-                    "SELECT revision FROM events ORDER BY position")]
-                if revisions != [event["revision"] for event in events]:
+                projected = list(db.execute(
+                    "SELECT position, revision, record_id, payload FROM events ORDER BY position"))
+                canonical = [
+                    (index, event["revision"], event["record"]["id"], encode(event["record"]))
+                    for index, event in enumerate(events, 1)
+                ]
+                if projected != canonical:
                     db.execute("DELETE FROM events")
                     for index, event in enumerate(events, 1):
                         self._insert(db, index, event)

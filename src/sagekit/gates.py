@@ -20,13 +20,30 @@ def validate_pin(value: dict) -> str:
     return value["revision"]
 
 
+def skipped_gate(stage=None):
+    return {"schema": 1, "stage": stage, "mode": "off", "status": "skipped", "allowed": True}
+
+
+def gate_envelope(policy: dict) -> dict:
+    return {"schema": 1, "stage": policy["stage"], "mode": policy["mode"],
+            "policy_id": digest(policy), "snapshot": None, "evidence": [], "decision": None}
+
+
+def gate_unavailable(policy: dict, reason: str) -> dict:
+    if (not isinstance(policy, dict) or policy.get("mode") not in ("required", "advisory")
+            or not text(policy.get("stage")) or not text(policy.get("query"))):
+        raise ValueError("enabled gate requires a stage and contextual query")
+    return {**gate_envelope(policy), "status": "unavailable", "reason": reason,
+            "allowed": policy["mode"] == "advisory"}
+
+
 def check_gate(app, principal, policy: dict, pinned: dict | None) -> dict:
     if not isinstance(policy, dict):
         raise ValueError("gate policy must be an object")
     mode = policy.get("mode", "off")
     stage = policy.get("stage")
     if mode == "off":
-        return {"schema": 1, "stage": stage, "mode": mode, "status": "skipped", "allowed": True}
+        return skipped_gate(stage)
     if mode not in ("advisory", "required") or not text(stage) or not text(policy.get("query")):
         raise ValueError("enabled gate requires a stage and contextual query")
     count = policy.get("minimum_evidence", 1)
@@ -37,16 +54,14 @@ def check_gate(app, principal, policy: dict, pinned: dict | None) -> dict:
     request = DecisionRequest(**policy["decision"]) if policy.get("decision") is not None else None
     if not count and not exact_ids and request is None:
         raise ValueError("enabled gate requires evidence or a decision")
-    envelope = {"schema": 1, "stage": stage, "mode": mode, "policy_id": digest(policy),
-                "snapshot": None, "evidence": [], "decision": None}
+    envelope = gate_envelope(policy)
     try:
         revision = validate_pin(pinned)
         if "inputs" in policy and policy["inputs"] != pinned["inputs"]:
             raise ValueError("approved inputs differ")
         records = {record.id: record for record in app.repo.records(revision, principal.groups)}
     except ValueError:
-        return {**envelope, "status": "unavailable", "reason": "invalid or unavailable pin",
-                "allowed": mode == "advisory"}
+        return gate_unavailable(policy, "invalid or unavailable pin")
     envelope["snapshot"] = revision
     evidence = app.search.query(policy["query"], revision=revision, groups=principal.groups,
                                 limit=max(count, 10))
