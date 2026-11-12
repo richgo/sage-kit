@@ -1,0 +1,12 @@
+{
+  "kind": "score",
+  "instructions": "How complete is the rollback plan for changing checkout event publication?",
+  "state": {
+    "plan": "Restore the previous publisher with a feature flag. Leave the outbox relay available to drain queued events. No rollback rehearsal or drain verification is recorded."
+  },
+  "criteria": [
+    "No actionable rollback plan",
+    "Actionable steps with missing verification or rehearsal",
+    "Rehearsed steps with evidence that queued events are drained safely"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "kind": "choice",
+  "instructions": "Which event publishing design best limits duplicate order events during retries?",
+  "state": {
+    "service": "checkout",
+    "database": "PostgreSQL",
+    "failure_mode": "The broker can accept an order event before the publisher receives an acknowledgement.",
+    "retry_behavior": "The publisher retries after an acknowledgement timeout.",
+    "stable_event_id": true
+  },
+  "criteria": {
+    "transactional-outbox": "Write the order and an outbox row in one database transaction. Relay the event with its stable ID and deduplicate at the consumer.",
+    "direct-publish": "Commit the order, then publish directly to the broker. Retry with the same stable ID and deduplicate at the consumer."
+  },
+  "family": "order-event-publication",
+  "metric": "duplicate-events-per-10000-orders",
+  "goal": "minimize"
+}
