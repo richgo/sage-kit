@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=77,<83"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sagekit"
+version = "0.1.0"
+description = "Versioned engineering knowledge and contextual decisions"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+sagekit = "sagekit.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

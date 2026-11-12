@@ -1,0 +1,6 @@
+{
+  "kind": "adr",
+  "title": "Use idempotent checkout writes",
+  "body": "Retry writes with a stable checkout request identifier.",
+  "source": {"uri": "repo:docs/adr/checkout.md", "revision": "example-v1"}
+}
