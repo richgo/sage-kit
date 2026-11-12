@@ -23,6 +23,9 @@ class Principal:
             raise PermissionError("insufficient permission")
 
 
+class VectorWriteError(OSError):
+    """The canonical event committed, but vector indexing must be retried."""
+
 class Application:
     def __init__(self, repo: Repository, search: Search | None = None, router: Router | None = None,
                  receipt_key: bytes | None = None):
@@ -50,13 +53,23 @@ class Application:
             raise ValueError("history must be a boolean")
         return [record.as_dict() for record in self.repo.records(revision, principal.groups, history=history)]
 
+    def append(self, entry: Record) -> str:
+        revision = self.repo.append(entry)
+        try:
+            self.search.ensure_vectors([entry])
+            if entry.kind == "observed-outcome":
+                self.search.ensure_vectors([entry], for_outcomes=True)
+        except Exception as exc:
+            raise VectorWriteError("record saved; vector indexing failed, retry the same write") from exc
+        return revision
+
     def add(self, principal, record):
         principal.require("write")
         entry = Record.from_dict(record)
         principal.allow_acl(entry.acl)
         if entry.kind in LEDGER_KINDS:
             raise ValueError("use the dedicated outcome ledger commands")
-        return {"id": entry.id, "revision": self.repo.append(entry)}
+        return {"id": entry.id, "revision": self.append(entry)}
 
     def query(self, principal, query, revision=None, limit=10):
         return self.search.query(query, revision=revision, groups=principal.groups, limit=limit)
@@ -68,12 +81,12 @@ class Application:
     def approve(self, principal, family, option, context, origin, source, acl=()):
         principal.require("approve")
         principal.allow_acl(acl)
-        return approve(self.repo, family, option, context, origin, Source(**source), acl).as_dict()
+        return approve(self.repo, family, option, context, origin, Source(**source), acl, append=self.append).as_dict()
 
     def observe(self, principal, choice_id, verification_id, metric, utility, source, acl=()):
         principal.require("observe")
         principal.allow_acl(acl)
-        return observe(self.repo, choice_id, verification_id, metric, utility, Source(**source), acl).as_dict()
+        return observe(self.repo, choice_id, verification_id, metric, utility, Source(**source), acl, append=self.append).as_dict()
 
     def gate_check(self, principal, policy, pin=None):
         from .gates import check_gate

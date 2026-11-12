@@ -2,6 +2,8 @@ import math
 
 from .decisions import DecisionRequest, ProviderUnavailable, number
 from .http import check_endpoint, post_json
+from .model import encode
+from .vectors import Vector
 
 
 def probability(value):
@@ -70,8 +72,39 @@ class JevProvider:
                 "evidence_ids": [record["id"] for record in records]}
 
 
+class VennOutcomeStore:
+    """Expose authorized, pinned outcome rows through Venn's store contract."""
+
+    distance = "squared_l2"
+    read_after_write = True
+
+    def __init__(self, search, cases, tag, minimum_similarity):
+        self.vectors = search.vectors
+        self.tag = tag
+        self.minimum_similarity = minimum_similarity
+        self.partitions = {}
+        for case in cases:
+            self.partitions.setdefault(case.metadata["option"], {})[search.outcome_key(case)] = case
+
+    def search(self, values, options, k, *, filters=None, exact_match=False):
+        if filters or exact_match:
+            raise ValueError("this store uses SageKit's snapshot and authorization filters")
+        queries = [Vector(self.vectors.profile, tuple(map(float, row))) for row in values]
+        neighbors = {}
+        for option in options:
+            cases = self.partitions.get(option, {})
+            neighbors[option] = [
+                [{"id": cases[key].id, "outcome": cases[key].metadata["utility"],
+                  "distance": max(0.0, 2.0 * (1.0 - similarity))}
+                 for key, similarity in self.vectors.search(query, set(cases), k)
+                 if key in cases and similarity >= self.minimum_similarity]
+                for query in queries
+            ]
+        return neighbors
+
+
 class VennProvider:
-    """Use upstream OutcomeService over eligible, profile-matched observed cases."""
+    """Wrap upstream OutcomeService over SageKit's live vector store."""
 
     def __init__(self, minimum_support: int = 2, minimum_similarity: float = 0.35, k: int = 11):
         if not 1 <= minimum_support <= k <= 100 or not 0 <= minimum_similarity <= 1:
@@ -80,53 +113,37 @@ class VennProvider:
         self.minimum_similarity = minimum_similarity
         self.k = k
 
-    def decide(self, request, cases, embedder):
-        from .model import encode
-
-        profile = embedder.profile
-        query = embedder.embed(request.state if isinstance(request.state, str) else encode(request.state))
-        partitions = {}
-        for case in cases:
-            vector = embedder.embed(case.body)
-            if vector.profile != profile or query.profile != profile:
-                raise ValueError("incompatible Venn embedding profile")
-            similarity = sum(a * b for a, b in zip(vector.values, query.values))
-            if similarity >= self.minimum_similarity:
-                partitions.setdefault(case.metadata["option"], []).append((case, vector))
-        supported = {key: rows for key, rows in partitions.items() if len(rows) >= self.minimum_support}
-        # An unsupported alternative cannot be compared with a measured utility.
-        if set(supported) != set(request.criteria):
+    def decide(self, request, cases, search):
+        profile = search.embedder.profile
+        if {case.metadata["option"] for case in cases} != set(request.criteria):
             return None
         try:
-            import faiss
-            import numpy as np
             from venn import OutcomeService
-            from venn.adapters import FaissOutcomeAdapter
             from venn.profiles import VectorTag
 
+            search.ensure_vectors(cases, for_outcomes=True)
+            state = request.state if isinstance(request.state, str) else encode(request.state)
+            query = search.embedder.embed(state)
+            if query.profile != profile:
+                raise ValueError("incompatible Venn embedding profile")
             tag = VectorTag(profile.name, profile.revision, profile.representation,
                             profile.dimensions, profile.fields)
-            parts = {}
-            for key, rows in supported.items():
-                index = faiss.IndexFlatL2(profile.dimensions)
-                index.add(np.asarray([vector.values for _, vector in rows], dtype="float32"))
-                parts[key] = {"index": index, "ids": [case.id for case, _ in rows],
-                              "outcomes": [case.metadata["utility"] for case, _ in rows]}
             service = OutcomeService()
-            store = service.register_store(FaissOutcomeAdapter(parts, tag=tag))
+            adapter = VennOutcomeStore(search, cases, tag, self.minimum_similarity)
+            store = service.register_store(adapter)
             result = service.decide_batch(
-                [{"vector": np.asarray(query.values, dtype="float32"), "tag": tag.to_dict()}],
+                [{"vector": list(query.values), "tag": tag.to_dict()}],
                 {"sagekit": {"type": "nearest_outcome", "store": store,
                              "options": list(request.criteria), "k": self.k,
                              "min_support": self.minimum_support, "goal": request.goal}},
             )["results"][0]["answers"]["sagekit"]
         except (ImportError, OSError, ValueError, KeyError, RuntimeError) as exc:
             raise ProviderUnavailable("Venn outcome route unavailable") from exc
-        if result["answer"] not in request.criteria:
-            return None
         support = result["options"]
-        means = [stats["mean"] for stats in support.values() if stats["supported"]]
-        if len(set(means)) == 1 or means.count(support[result["answer"]]["mean"]) > 1:
+        if result["answer"] not in request.criteria or not all(stats["supported"] for stats in support.values()):
+            return None
+        means = [stats["mean"] for stats in support.values()]
+        if means.count(support[result["answer"]]["mean"]) > 1:
             return None
         return {"provider": "venn", "value": result["answer"], "confidence": None,
                 "support": support, "evidence_ids": sorted({

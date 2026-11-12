@@ -2,7 +2,7 @@ import hmac
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 
-from .application import Principal
+from .application import Principal, VectorWriteError
 from .http import MAX_BODY, post_json
 from .model import encode
 
@@ -95,6 +95,8 @@ def service(application, credentials, host="127.0.0.1", port=8765):
                 if not isinstance(data, dict):
                     raise ValueError("expected a JSON object")
                 result = application.dispatch(self.path[4:], data, principal)
+            except VectorWriteError as exc:
+                self.reply(503, {"error": str(exc)})
             except PermissionError:
                 self.reply(403, {"error": "insufficient permission"})
             except KeyError:
