@@ -1,0 +1,7 @@
+name: sagekit-contextual-knowledge
+version: "0.1.0"
+description: Check pinned SageKit evidence at optional ForgeKit verification gates.
+targets: [copilot]
+dependencies:
+  apm: []
+  mcp: []

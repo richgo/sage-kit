@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "exports": [
+    {"kind": "apmx-contract", "path": "contracts/contextual-knowledge.contract.md"},
+    {"kind": "knowledge-check", "path": "checks/contextual_gate.py"}
+  ]
+}

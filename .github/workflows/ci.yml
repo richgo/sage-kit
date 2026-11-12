@@ -11,9 +11,54 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - run: python -m pip install .
+      - run: python -m pip wheel --no-deps . -w dist
+      - run: python -m pip install --no-index --find-links dist sagekit
       - run: python -m unittest discover -s tests -v
       - run: sagekit --help
+
+  integrations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.2-pg17
+        env:
+          POSTGRES_USER: sagekit
+          POSTGRES_PASSWORD: fixture
+          POSTGRES_DB: sagekit
+        options: >-
+          --health-cmd "pg_isready -U sagekit"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: richgo/forge-kit
+          ref: e8b84fed59fba4240d885d7f3e043ba902936126
+          path: .forgekit-fixture
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: python -m pip install '.[faiss,mcp,postgres,qdrant]'
+      - run: python -m pip install 'torch==2.9.1' --index-url https://download.pytorch.org/whl/cpu
+      - run: python -m pip install 'venn-vdm @ git+https://github.com/markrussinovich/venn-vdm.git@ad97513f1cc1fc5abc886f195d17e6145776e091'
+      - run: python -m pip check
+      - run: python -m unittest discover -s tests -v
+        env:
+          SAGEKIT_TEST_POSTGRES: postgresql://sagekit:fixture@localhost:5432/sagekit
+          SAGEKIT_TEST_FORGEKIT: .forgekit-fixture

@@ -1,0 +1,74 @@
+name: Promote independently verified knowledge
+on:
+  workflow_call:
+    inputs:
+      sagekit_revision:
+        description: Reviewed 40-character SageKit commit
+        type: string
+        required: true
+      verifier_workflow:
+        description: Fully qualified workflow that produced and attested the promotion request
+        type: string
+        required: true
+      verifier_digest:
+        description: Reviewed commit of the verifier workflow
+        type: string
+        required: true
+      remote_url:
+        description: HTTPS SageKit API origin
+        type: string
+        required: true
+
+permissions: {}
+jobs:
+  promote:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      actions: read
+      attestations: read
+      contents: read
+    environment: sagekit-promotion
+    steps:
+      - name: Validate immutable references
+        env:
+          SAGEKIT_REVISION: ${{ inputs.sagekit_revision }}
+          VERIFIER_DIGEST: ${{ inputs.verifier_digest }}
+          SAGEKIT_REMOTE_URL: ${{ inputs.remote_url }}
+        run: |
+          [[ "$SAGEKIT_REVISION" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$VERIFIER_DIGEST" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$SAGEKIT_REMOTE_URL" == https://* ]]
+      - uses: actions/checkout@v4
+        with:
+          repository: richgo/sage-kit
+          ref: ${{ inputs.sagekit_revision }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: python -m pip install .
+      - uses: actions/download-artifact@v4
+        with:
+          name: sagekit-verified-promotion
+          path: verification
+      - name: Authenticate approved request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERIFIER_WORKFLOW: ${{ inputs.verifier_workflow }}
+          VERIFIER_DIGEST: ${{ inputs.verifier_digest }}
+        run: |
+          gh attestation verify verification/promotion.json --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$VERIFIER_WORKFLOW" --signer-digest "$VERIFIER_DIGEST" \
+            --source-ref refs/heads/main --source-digest "$GITHUB_SHA" --deny-self-hosted-runners
+          python -c 'import json,os; data=json.load(open("verification/promotion.json")); assert data["pipeline"] == os.environ["GITHUB_REPOSITORY"] and data["run"] == os.environ["GITHUB_RUN_ID"]'
+      - name: Promote verified knowledge
+        env:
+          SAGEKIT_RECEIPT_KEY: ${{ secrets.SAGEKIT_RECEIPT_KEY }}
+          SAGEKIT_TOKEN: ${{ secrets.SAGEKIT_PROMOTION_TOKEN }}
+          SAGEKIT_REMOTE_URL: ${{ inputs.remote_url }}
+        run: |
+          set -euo pipefail
+          sagekit sign-receipt verification/promotion.json > "$RUNNER_TEMP/sagekit-receipt.json"
+          sagekit promote "$RUNNER_TEMP/sagekit-receipt.json"

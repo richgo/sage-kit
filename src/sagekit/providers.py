@@ -122,7 +122,7 @@ class VennProvider:
             raise ProviderUnavailable("Venn outcome route unavailable") from exc
         if result["answer"] not in request.criteria:
             return None
-        support = result["support"]
+        support = result["options"]
         means = [stats["mean"] for stats in support.values() if stats["supported"]]
         if len(set(means)) == 1 or means.count(support[result["answer"]]["mean"]) > 1:
             return None

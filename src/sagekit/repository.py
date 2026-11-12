@@ -19,6 +19,12 @@ class Repository(Protocol):
 
 
 def validate_append(record: Record, previous: dict[str, Record], replaced: set[str]) -> None:
+    if record.kind == "verified-change" and "run" in record.metadata:
+        key = (record.metadata.get("pipeline"), record.metadata["run"])
+        if any(item.kind == "verified-change"
+               and (item.metadata.get("pipeline"), item.metadata.get("run")) == key
+               for item in previous.values()):
+            raise ValueError("pipeline run already promoted with different content")
     for identifier in record.links:
         target = previous.get(identifier)
         if target is None or (target.acl and not (record.acl and set(record.acl) <= set(target.acl))):
