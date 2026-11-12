@@ -41,4 +41,24 @@ def create_mcp(application, credentials, token, remote=None):
         """Ask a typed Choice, Score or Noul question."""
         return dispatch("decide", {"request": request, "revision": revision})
 
+    @server.tool()
+    def check_gate(policy: dict, pin: dict | None = None) -> dict:
+        """Check the pinned corpus at a contextual verification gate."""
+        return dispatch("gate-check", {"policy": policy, "pin": pin})
+
+    @server.tool()
+    def record_approval(approval: dict) -> dict:
+        """Record an authorized choice in the outcome ledger."""
+        return dispatch("approve", approval)
+
+    @server.tool()
+    def record_outcome(observation: dict) -> dict:
+        """Record a measured utility linked to an independently verified change."""
+        return dispatch("observe", observation)
+
+    @server.tool()
+    def promote_verified_change(receipt: dict) -> dict:
+        """Publish an authenticated, independently verified successful change."""
+        return dispatch("promote", {"receipt": receipt})
+
     return server

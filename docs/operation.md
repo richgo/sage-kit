@@ -107,7 +107,8 @@ arguments, such as `{"query":"checkout","limit":5}` for `/v1/query`.
 Install `.[mcp]` for `sagekit mcp`. The server uses stdio and binds its
 identity to `SAGEKIT_TOKEN` at startup. Run it with the same local credential
 configuration or as a client of the authenticated REST service. It exposes
-snapshot, list, add, search, and typed decision tools.
+snapshot, list, add, search, typed decisions, gate checks, and the scoped
+approval, observation, and promotion tools.
 
 `sagekit --root corpus export-public site` emits an escaped HTML view and JSON
 for public records. The manually triggered Pages workflow publishes those

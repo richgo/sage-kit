@@ -108,6 +108,7 @@ class Adapters(unittest.TestCase):
                 create_mcp(app, credentials, "unknown")
             mcp = create_mcp(app, credentials, "reader")
             tools = asyncio.run(mcp.list_tools())
-            self.assertIn("add_knowledge", {tool.name for tool in tools})
+            self.assertTrue({"add_knowledge", "check_gate", "record_approval", "record_outcome",
+                             "promote_verified_change"} <= {tool.name for tool in tools})
             result = asyncio.run(mcp.call_tool("snapshot", {}))
             self.assertIsNotNone(result)

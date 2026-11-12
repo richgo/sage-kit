@@ -73,12 +73,21 @@ jobs:
           export PATH="$RUNNER_TEMP/agent:$PATH"
           stage="$(mktemp -d)"
           cp -a integrations/forgekit/. "$stage/"
-          cp examples/gate-off.json "$stage/sagekit-policy.json"
+          cp examples/gate-required.json "$stage/sagekit-policy.json"
+          cp .forgekit-fixture/examples/requirements.json "$stage/requirements.json"
+          cp .forgekit-fixture/architecture/slice.json "$stage/architecture.json"
+          sed -i '/sagekit-policy.json/a\  - requirements.json\n  - architecture.json\n  - corpus/knowledge.jsonl' \
+            "$stage/contracts/contextual-knowledge.contract.md"
           cd "$stage"
-          python -c 'import hashlib,json; print(json.dumps({"requirements": hashlib.sha256(b"fixture").hexdigest()}))' > digests.json
+          sagekit add "$GITHUB_WORKSPACE/examples/adr.json"
+          python -c 'import hashlib,json; from pathlib import Path; print(json.dumps({n: hashlib.sha256(Path(n).read_bytes()).hexdigest() for n in ("requirements.json", "architecture.json")}))' > digests.json
           sagekit pin digests.json > sagekit-pin.json
           apmx . --plan
           apmx . --allow-host-access --allow-unproven-inputs
           receipt="$(find .apm/chains -name receipt.intoto.jsonl -print -quit)"
           test -n "$receipt"
           apmx check "$receipt" .
+          printf '%s\n' '{}' > architecture.json
+          rejected=0
+          apmx check "$receipt" . || rejected=$?
+          test "$rejected" -eq 20

@@ -9,6 +9,13 @@ requirements, architecture, implementation, test, security, or release.
 Use the pinned APMX runner's supported workspace staging. The ForgeKit fixture
 replays the check and the independent verifier. A hosted agent run requires
 the ForgeKit caller's configured native harness and approved credentials.
+From a prepared APMX workspace, preview a reviewed package with
+`apmx --from richgo/sage-kit/integrations/forgekit#COMMIT --plan`.
+For a caller-specific contract, keep the exported verifier and add the
+approved file paths to the contract's `needs`. A local gate also needs
+`corpus/knowledge.jsonl` in its verification workspace. After the producer
+runs, use `apmx check PRODUCER_RECEIPT` with the same factory definition to
+run the independent checks before accepting a handoff.
 
 At pipeline start, hash the exact approved input files with SHA-256 and write
 a JSON object mapping workspace-relative input paths to their hashes. The pin
