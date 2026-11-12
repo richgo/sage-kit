@@ -31,9 +31,9 @@ def reindex(app, groups, revision=None) -> dict:
     pinned = app.repo.snapshot() if revision is None else revision
     records = app.repo.records(pinned, groups)
     started = perf_counter()
-    app.search.ensure_vectors(records)
+    app.search.ensure_vectors(records, rebuild=True)
     app.search.ensure_vectors([item for item in records if item.kind == "observed-outcome"],
-                              for_outcomes=True)
+                              for_outcomes=True, rebuild=True)
     return {"revision": pinned, "records": len(records), "embedding_profile": app.search.embedder.profile.key,
             "seconds": perf_counter() - started}
 

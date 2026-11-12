@@ -27,7 +27,7 @@ def create_application(root: Path) -> Application:
 
     venn_setting = os.getenv("SAGEKIT_VENN", "auto")
     use_venn = venn_setting == "1" or (venn_setting == "auto" and find_spec("venn") is not None)
-    default_backend = "faiss" if use_venn else "local"
+    default_backend = "faiss" if use_venn and find_spec("faiss") is not None else "local"
     backend = os.getenv("SAGEKIT_VECTORS", default_backend)
     vector_root = Path(os.getenv("SAGEKIT_VECTOR_ROOT", root / ".sagekit" / "vectors"))
     if backend == "qdrant":
