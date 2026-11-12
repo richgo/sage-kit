@@ -27,6 +27,13 @@ class QdrantVectors:
     def _point_id(self, key: str) -> str:
         return str(uuid5(NAMESPACE_URL, self.profile.key + ":" + key))
 
+    def existing(self, keys: set[str]) -> set[str]:
+        if not keys:
+            return set()
+        points = self.client.retrieve(self.collection, ids=[self._point_id(key) for key in keys],
+                                      with_payload=True, with_vectors=False)
+        return {point.payload["record"] for point in points if point.payload} & keys
+
     def upsert(self, vectors: dict[str, Vector]) -> None:
         compatible(self.profile, vectors.values())
         if vectors:
@@ -69,6 +76,14 @@ class PgVectorStore:
     @staticmethod
     def _literal(vector: Vector) -> str:
         return "[" + ",".join(map(str, vector.values)) + "]"
+
+    def existing(self, keys: set[str]) -> set[str]:
+        if not keys:
+            return set()
+        with self.connect(self.dsn) as db:
+            rows = db.execute("SELECT record_id FROM sagekit_vectors WHERE profile = %s AND record_id = ANY(%s)",
+                              (self.profile.key, sorted(keys)))
+            return {row[0] for row in rows}
 
     def upsert(self, vectors: dict[str, Vector]) -> None:
         compatible(self.profile, vectors.values())

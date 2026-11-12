@@ -42,18 +42,22 @@ selecting it.
 
 | Backend | Installation | Configuration |
 | --- | --- | --- |
-| In-process exact search | Core | Default |
-| FAISS | `pip install '.[faiss]'` | `SAGEKIT_VECTORS=faiss` |
+| Local persistent exact search | Core | Default with the core install, or `SAGEKIT_VECTORS=local` |
+| Local FAISS | `pip install '.[faiss]'` | Default when Venn is installed, or `SAGEKIT_VECTORS=faiss` |
 | Qdrant | `pip install '.[qdrant]'` | `SAGEKIT_VECTORS=qdrant`, `SAGEKIT_QDRANT_URL`, optional `SAGEKIT_QDRANT_API_KEY` |
 | pgvector | `pip install '.[postgres]'` | `SAGEKIT_VECTORS=pgvector`, `SAGEKIT_POSTGRES_DSN` |
 
-FAISS builds an eligible flat index from the local projection for a search.
+All durable backends store vectors during writes. Local vectors live under
+`corpus/.sagekit/vectors` by default. Set `SAGEKIT_VECTOR_ROOT` to change
+that path. FAISS searches an eligible index built from those stored vectors.
 Qdrant and pgvector persist vectors by profile and record ID. Keep vector
 stores private and restrict access to the SageKit service. Profiles include
 model, revision, representation, dimension, and ordered fields. A new
 profile gets a distinct namespace.
 
 ## Decision providers
+
+See the [Venn and Jev architecture](decision-engine.md) for the shared write and decision path.
 
 `decide REQUEST.json` returns an audit envelope with the pinned snapshot,
 request hash, embedding profile, evidence references, route attempts, and
@@ -69,7 +73,8 @@ pipeline's evidence artifacts if retention is required.
   validates Choice, Score, and Noul responses. Both transports omit restricted
   records by default. Set `SAGEKIT_JEV_RESTRICTED_EVIDENCE=1` only for a trusted
   loopback server whose retention and logs are approved for restricted data.
-- Set `SAGEKIT_VENN=1` to enable upstream Venn's outcome service. Use Python
+- Installing upstream Venn enables its outcome service automatically. Set
+  `SAGEKIT_VENN=0` to disable it or `SAGEKIT_VENN=1` to enable it explicitly. Use Python
   3.12 for the pinned upstream package and install it with the command below.
   The outcome path uses tagged vectors and requires no downloaded Venn model
   weights. Venn compares a Choice only when each alternative has sufficient

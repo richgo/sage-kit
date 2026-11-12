@@ -5,11 +5,11 @@ import tempfile
 import unittest
 from uuid import uuid4
 
-from sagekit.application import Application
+from sagekit.application import Application, Principal
+from sagekit.config import create_application
 from sagekit.decisions import DecisionRequest
 from sagekit.maintenance import backup, restore
 from sagekit.model import Record, Source
-from sagekit.providers import VennProvider
 from sagekit.repository import LocalRepository
 from sagekit.vector_backends import PgVectorStore, QdrantVectors
 from sagekit.vectors import EmbeddingProfile, FaissVectors, HashEmbedder, Vector
@@ -24,7 +24,9 @@ def vector_contract(test, store, embedder):
     vector = embedder.embed("checkout")
     ids = {str(uuid4()) for _ in range(3)}
     first, second, hidden = sorted(ids)
+    test.assertEqual(set(), store.existing(ids))
     store.upsert({first: vector, second: embedder.embed("architecture"), hidden: vector})
+    test.assertEqual(ids, store.existing(ids))
     test.assertEqual([first], [key for key, _ in store.search(vector, {first, second}, 1)])
     test.assertEqual([], store.search(vector, set(), 10))
     wrong = EmbeddingProfile("different", "v1", "text", embedder.profile.dimensions)
@@ -69,13 +71,34 @@ class Adapters(unittest.TestCase):
     def test_real_venn_outcome_service(self):
         request = DecisionRequest("choice", "checkout retry", "checkout retry",
                                   {"a": "retry", "b": "queue"}, family="checkout", metric="uptime")
-        cases = [Record("observed-outcome", str(index), "checkout retry", Source("repo:ops", str(index)),
-                        metadata={"option": option, "utility": utility})
-                 for index, (option, utility) in enumerate([("a", 1), ("a", .9), ("b", .4), ("b", .3)])]
-        result = VennProvider().decide(request, cases, HashEmbedder())
-        self.assertEqual("a", result["value"])
-        self.assertEqual(4, len(result["evidence_ids"]))
-        self.assertIsNone(VennProvider().decide(request, cases[:2], HashEmbedder()))
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            app = create_application(root)
+            principal = Principal(scopes=frozenset({"approve", "observe", "decide"}))
+            ids = set()
+            for index, (option, utility) in enumerate([("a", 1), ("a", .9), ("b", .4), ("b", .3)]):
+                source = Source("repo:ops", str(index))
+                choice = app.approve(principal, "checkout", option, request.state, "human", source.as_dict())
+                verified = Record("verified-change", "Release verified", "Checks passed", source,
+                                  links=(choice["id"],))
+                app.append(verified)
+                observed = Record.from_dict(app.observe(
+                    principal, choice["id"], verified.id, "uptime", utility, source.as_dict()))
+                self.assertEqual({app.search.outcome_key(observed)},
+                                 app.search.vectors.existing({app.search.outcome_key(observed)}))
+                ids.add(observed.id)
+            reopened = create_application(root)
+            embed = reopened.search.embedder.embed
+
+            def query_only(text):
+                self.assertEqual(request.state, text)
+                return embed(text)
+
+            reopened.search.embedder.embed = query_only
+            result = reopened.router.decide(request)
+            self.assertEqual("venn", result["provider"])
+            self.assertEqual("a", result["value"])
+            self.assertEqual(ids, set(result["evidence_ids"]))
 
     def test_backup_restore_preserves_original_revision(self):
         with tempfile.TemporaryDirectory() as temp:
