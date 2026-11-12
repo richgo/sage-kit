@@ -12,13 +12,14 @@ class Search:
         if self.vectors.profile != self.embedder.profile:
             raise ValueError("incompatible embedding profile")
 
-    def ensure_vectors(self, records: list[Record], *, for_outcomes: bool = False) -> None:
+    def ensure_vectors(self, records: list[Record], *, for_outcomes: bool = False,
+                       rebuild: bool = False) -> None:
         for offset in range(0, len(records), 100):
             batch = {
                 (self.outcome_key(record) if for_outcomes else record.id): record
                 for record in records[offset:offset + 100]
             }
-            missing = set(batch) - self.vectors.existing(set(batch))
+            missing = set(batch) if rebuild else set(batch) - self.vectors.existing(set(batch))
             if missing:
                 self.vectors.upsert({
                     key: self.embedder.embed(batch[key].body if for_outcomes else

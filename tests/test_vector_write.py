@@ -2,7 +2,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from sagekit.application import Principal
+from sagekit.application import Principal, VectorWriteError
 from sagekit.config import create_application
 from sagekit.repository import LocalRepository
 from test_foundation import record
@@ -51,7 +51,7 @@ class VectorWriteTests(unittest.TestCase):
                 raise OSError("vector store unavailable")
 
             app.search.vectors.upsert = unavailable
-            with self.assertRaises(OSError):
+            with self.assertRaisesRegex(VectorWriteError, "record saved"):
                 app.add(identity, entry.as_dict())
             self.assertEqual([entry], app.repo.records())
             revision = app.repo.snapshot()

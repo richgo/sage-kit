@@ -23,6 +23,9 @@ class Principal:
             raise PermissionError("insufficient permission")
 
 
+class VectorWriteError(OSError):
+    """The canonical event committed, but vector indexing must be retried."""
+
 class Application:
     def __init__(self, repo: Repository, search: Search | None = None, router: Router | None = None,
                  receipt_key: bytes | None = None):
@@ -52,9 +55,12 @@ class Application:
 
     def append(self, entry: Record) -> str:
         revision = self.repo.append(entry)
-        self.search.ensure_vectors([entry])
-        if entry.kind == "observed-outcome":
-            self.search.ensure_vectors([entry], for_outcomes=True)
+        try:
+            self.search.ensure_vectors([entry])
+            if entry.kind == "observed-outcome":
+                self.search.ensure_vectors([entry], for_outcomes=True)
+        except Exception as exc:
+            raise VectorWriteError("record saved; vector indexing failed, retry the same write") from exc
         return revision
 
     def add(self, principal, record):
