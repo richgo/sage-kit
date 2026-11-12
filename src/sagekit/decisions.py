@@ -4,7 +4,6 @@ from typing import Protocol
 
 from .model import Record, digest
 from .retrieval import Search
-from .vectors import Embedder
 
 
 def text(value):
@@ -87,7 +86,7 @@ class Provider(Protocol):
 
 
 class PrecedentProvider(Protocol):
-    def decide(self, request: DecisionRequest, cases: list[Record], embedder: Embedder) -> dict | None: ...
+    def decide(self, request: DecisionRequest, cases: list[Record], search: Search) -> dict | None: ...
 
 
 class Router:
@@ -109,15 +108,13 @@ class Router:
         if failures:
             return {**envelope, "status": "denied", "provider": "policy", "failed_fields": failures}
 
-        evidence = self.search.query(request.instructions, revision=revision, groups=groups)
-        envelope["evidence"] = [{"id": hit["record"]["id"], "source": hit["record"]["source"]}
-                                for hit in evidence]
+
         if self.precedent and request.family and request.minimum_confidence > 0:
             envelope["attempts"].append({"provider": "venn", "status": "uncalibrated"})
         elif self.precedent and request.family:
             cases = eligible_cases(repo, revision, groups, request.family, request.metric, request.criteria)
             try:
-                result = self.precedent.decide(request, cases, self.search.embedder) if cases else None
+                result = self.precedent.decide(request, cases, self.search) if cases else None
             except ProviderUnavailable:
                 envelope["attempts"].append({"provider": "venn", "status": "unavailable"})
             else:
@@ -127,6 +124,9 @@ class Router:
                                                 for key in result["evidence_ids"] if key in sources)
                     return {**envelope, **result, "status": "answered"}
                 envelope["attempts"].append({"provider": "venn", "status": "insufficient"})
+        evidence = self.search.query(request.instructions, revision=revision, groups=groups)
+        envelope["evidence"] = [{"id": hit["record"]["id"], "source": hit["record"]["source"]}
+                                for hit in evidence]
         if self.fallback:
             try:
                 result = self.fallback.decide(request, evidence)

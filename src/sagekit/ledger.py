@@ -6,19 +6,19 @@ LEDGER_KINDS = frozenset({"approved-choice", "verified-change", "observed-outcom
 
 
 def approve(repo: Repository, family: str, option: str, context: str, origin: str,
-            source: Source, acl: tuple[str, ...] = ()) -> Record:
+            source: Source, acl: tuple[str, ...] = (), *, append=None) -> Record:
     if not text(family) or not text(option) or option == "none" or origin not in (
         "human", "venn", "jev", "jev-oss"
     ):
         raise ValueError("approval requires family, chosen option and decision origin")
     record = Record("approved-choice", f"{family}: {option}", context, source, acl=acl,
                     metadata={"family": family, "option": option, "origin": origin})
-    repo.append(record)
+    (append or repo.append)(record)
     return record
 
 
 def observe(repo: Repository, choice_id: str, verification_id: str, metric: str, utility: float,
-            source: Source, acl: tuple[str, ...] = ()) -> Record:
+            source: Source, acl: tuple[str, ...] = (), *, append=None) -> Record:
     records = {record.id: record for record in repo.records(groups=set(acl))}
     choice = records.get(choice_id)
     verified = records.get(verification_id)
@@ -33,7 +33,7 @@ def observe(repo: Repository, choice_id: str, verification_id: str, metric: str,
                         "metric": metric, "utility": utility, "choice": choice.id,
                         "verification": verified.id,
                     })
-    repo.append(record)
+    (append or repo.append)(record)
     return record
 
 

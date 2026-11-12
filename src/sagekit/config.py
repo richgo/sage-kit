@@ -1,3 +1,4 @@
+from importlib.util import find_spec
 import os
 from pathlib import Path
 
@@ -6,7 +7,7 @@ from .decisions import Router
 from .providers import JevProvider, VennProvider
 from .repository import LocalRepository
 from .retrieval import Search
-from .vectors import FaissVectors, HashEmbedder, MemoryVectors, SentenceEmbedder
+from .vectors import FaissVectors, FileVectors, HashEmbedder, MemoryVectors, SentenceEmbedder
 
 
 def create_application(root: Path) -> Application:
@@ -24,7 +25,11 @@ def create_application(root: Path) -> Application:
     else:
         embedder = HashEmbedder()
 
-    backend = os.getenv("SAGEKIT_VECTORS", "memory")
+    venn_setting = os.getenv("SAGEKIT_VENN", "auto")
+    use_venn = venn_setting == "1" or (venn_setting == "auto" and find_spec("venn") is not None)
+    default_backend = "faiss" if use_venn else "local"
+    backend = os.getenv("SAGEKIT_VECTORS", default_backend)
+    vector_root = Path(os.getenv("SAGEKIT_VECTOR_ROOT", root / ".sagekit" / "vectors"))
     if backend == "qdrant":
         from qdrant_client import QdrantClient
 
@@ -40,7 +45,9 @@ def create_application(root: Path) -> Application:
             raise ValueError("pgvector requires SAGEKIT_POSTGRES_DSN")
         vectors = PgVectorStore(dsn, embedder.profile)
     elif backend == "faiss":
-        vectors = FaissVectors(embedder.profile)
+        vectors = FaissVectors(embedder.profile, vector_root)
+    elif backend == "local":
+        vectors = FileVectors(vector_root, embedder.profile)
     elif backend == "memory":
         vectors = MemoryVectors(embedder.profile)
     else:
@@ -53,7 +60,7 @@ def create_application(root: Path) -> Application:
             endpoint, os.getenv("TYPESAFE_API_KEY"), os.getenv("SAGEKIT_JEV_MODEL"),
             allow_restricted_evidence=os.getenv("SAGEKIT_JEV_RESTRICTED_EVIDENCE") == "1",
         )
-    precedent = VennProvider() if os.getenv("SAGEKIT_VENN") == "1" else None
+    precedent = VennProvider() if use_venn else None
     search = Search(repo, embedder, vectors)
     secret = os.getenv("SAGEKIT_RECEIPT_KEY")
     return Application(repo, search, Router(search, precedent=precedent, fallback=fallback),

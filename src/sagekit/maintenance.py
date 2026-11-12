@@ -30,13 +30,11 @@ def restore(repo: LocalRepository, source: Path) -> dict:
 def reindex(app, groups, revision=None) -> dict:
     pinned = app.repo.snapshot() if revision is None else revision
     records = app.repo.records(pinned, groups)
-    vectors = app.search.vectors
-    embedder = app.search.embedder
     started = perf_counter()
-    for offset in range(0, len(records), 100):
-        vectors.upsert({item.id: embedder.embed(item.title + "\n" + item.body)
-                        for item in records[offset:offset + 100]})
-    return {"revision": pinned, "records": len(records), "embedding_profile": embedder.profile.key,
+    app.search.ensure_vectors(records)
+    app.search.ensure_vectors([item for item in records if item.kind == "observed-outcome"],
+                              for_outcomes=True)
+    return {"revision": pinned, "records": len(records), "embedding_profile": app.search.embedder.profile.key,
             "seconds": perf_counter() - started}
 
 

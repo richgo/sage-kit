@@ -1,10 +1,13 @@
 from dataclasses import asdict, dataclass
 import hashlib
+import json
 import math
+from pathlib import Path
 import re
 from typing import Protocol
 
-from .model import digest
+from .model import digest, encode
+from .repository import atomic_text
 
 
 def words(text: str) -> list[str]:
@@ -82,6 +85,8 @@ class SentenceEmbedder:
 class VectorStore(Protocol):
     profile: EmbeddingProfile
 
+    def existing(self, keys: set[str]) -> set[str]: ...
+
     def upsert(self, vectors: dict[str, Vector]) -> None: ...
     def search(self, vector: Vector, allowed: set[str], limit: int) -> list[tuple[str, float]]: ...
 
@@ -91,35 +96,87 @@ def compatible(profile: EmbeddingProfile, vectors) -> None:
         raise ValueError("incompatible embedding profile")
 
 
-class MemoryVectors:
+class FlatVectors:
+    """Exact cosine search over normalized, profile-tagged vectors."""
+
+    profile: EmbeddingProfile
+
+    def load(self, allowed: set[str]) -> dict[str, tuple[float, ...]]:
+        raise NotImplementedError
+
+    def search(self, vector: Vector, allowed: set[str], limit: int) -> list[tuple[str, float]]:
+        compatible(self.profile, [vector])
+        rows = ((key, sum(a * b for a, b in zip(vector.values, values)))
+                for key, values in self.load(allowed).items())
+        return sorted(rows, key=lambda row: (-row[1], row[0]))[:limit]
+
+
+class MemoryVectors(FlatVectors):
     def __init__(self, profile: EmbeddingProfile):
         self.profile = profile
         self.vectors: dict[str, Vector] = {}
+
+    def existing(self, keys: set[str]) -> set[str]:
+        return keys.intersection(self.vectors)
 
     def upsert(self, vectors: dict[str, Vector]) -> None:
         compatible(self.profile, vectors.values())
         self.vectors.update(vectors)
 
-    def search(self, vector: Vector, allowed: set[str], limit: int) -> list[tuple[str, float]]:
-        compatible(self.profile, [vector])
-        rows = ((key, math.sumprod(vector.values, self.vectors[key].values))
-                for key in allowed.intersection(self.vectors)) if hasattr(math, "sumprod") else (
-                    (key, sum(a * b for a, b in zip(vector.values, self.vectors[key].values)))
-                    for key in allowed.intersection(self.vectors))
-        return sorted(rows, key=lambda row: (-row[1], row[0]))[:limit]
+    def load(self, allowed: set[str]) -> dict[str, tuple[float, ...]]:
+        return {key: self.vectors[key].values for key in self.existing(allowed)}
 
 
-class FaissVectors(MemoryVectors):
+class FileVectors(FlatVectors):
+    """Local vector storage shared across CLI processes, isolated by profile."""
+
+    def __init__(self, root: Path, profile: EmbeddingProfile):
+        self.profile = profile
+        self.directory = root / profile.key
+        self.directory.mkdir(parents=True, exist_ok=True)
+
+    def _path(self, key: str) -> Path:
+        return self.directory / (digest(key) + ".json")
+
+    def existing(self, keys: set[str]) -> set[str]:
+        return {key for key in keys if self._path(key).is_file()}
+
+    def upsert(self, vectors: dict[str, Vector]) -> None:
+        compatible(self.profile, vectors.values())
+        for key, vector in vectors.items():
+            atomic_text(self._path(key), encode(vector.values))
+
+    def load(self, allowed: set[str]) -> dict[str, tuple[float, ...]]:
+        return {key: Vector(self.profile, tuple(json.loads(
+            self._path(key).read_text(encoding="utf-8")))).values
+                for key in self.existing(allowed)}
+
+
+class FaissVectors(FlatVectors):
+    def __init__(self, profile: EmbeddingProfile, root: Path | None = None):
+        self.profile = profile
+        self.storage = MemoryVectors(profile) if root is None else FileVectors(root, profile)
+
+    def existing(self, keys: set[str]) -> set[str]:
+        return self.storage.existing(keys)
+
+    def upsert(self, vectors: dict[str, Vector]) -> None:
+        self.storage.upsert(vectors)
+
+    def load(self, allowed: set[str]) -> dict[str, tuple[float, ...]]:
+        return self.storage.load(allowed)
+
     def search(self, vector: Vector, allowed: set[str], limit: int) -> list[tuple[str, float]]:
         import faiss
         import numpy as np
 
         compatible(self.profile, [vector])
-        keys = sorted(allowed.intersection(self.vectors))
+        vectors = self.load(allowed)
+        keys = sorted(vectors)
         if not keys:
             return []
         index = faiss.IndexFlatIP(self.profile.dimensions)
-        index.add(np.asarray([self.vectors[key].values for key in keys], dtype="float32"))
+        index.add(np.asarray([vectors[key] for key in keys], dtype="float32"))
         scores, positions = index.search(np.asarray([vector.values], dtype="float32"), len(keys))
         rows = [(keys[position], float(score)) for score, position in zip(scores[0], positions[0])]
         return sorted(rows, key=lambda row: (-row[1], row[0]))[:limit]

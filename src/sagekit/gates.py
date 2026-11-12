@@ -119,4 +119,4 @@ def promote(app, principal, receipt: dict) -> dict:
     pinned = {item.id for item in app.repo.records(revision, principal.groups)}
     if not set(entry.links) <= pinned:
         raise ValueError("change references knowledge outside the approved snapshot")
-    return {"id": entry.id, "revision": app.repo.append(entry)}
+    return {"id": entry.id, "revision": app.append(entry)}

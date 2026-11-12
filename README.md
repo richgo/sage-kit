@@ -1,10 +1,12 @@
 # SageKit
 
-SageKit is a read-write engineering knowledge corpus for requirements, architecture,
-decisions, incidents, and independently verified changes. It runs offline with
-Git and SQLite or as a token-authenticated service with PostgreSQL. ForgeKit can
-consult it at individual verification gates and publish verified changes after
-the pipeline succeeds.
+SageKit wraps Venn's vector decision engine with a read-write engineering
+knowledge corpus. `sagekit add` writes a record and its embedding. Venn reads
+observed outcomes from that same vector store. Jev or a compatible OSS model
+provides typed inference when there is insufficient precedent. Git and SQLite
+retain the local records, access rules and history. The vector store handles
+similarity search. ForgeKit can consult SageKit at verification gates and
+publish verified changes after the pipeline succeeds.
 
 ## Quick start
 
@@ -26,6 +28,7 @@ record. The remote service assigns groups and scopes from the configured token.
 
 ## Guides
 
+- [Venn, Jev, and the vector write path](docs/decision-engine.md)
 - [Corpus, search, providers, and hosting](docs/operation.md)
 - [ForgeKit contextual gates and promotion](docs/forgekit.md)
 - [Ordered specifications and verification coverage](specs/README.md)
