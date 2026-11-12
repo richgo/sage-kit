@@ -1,0 +1,6 @@
+{
+  "mode": "required",
+  "stage": "architecture",
+  "query": "idempotent checkout",
+  "minimum_evidence": 1
+}

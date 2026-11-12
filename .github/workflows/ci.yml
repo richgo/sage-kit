@@ -1,0 +1,93 @@
+name: CI
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.11", "3.13"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip wheel --no-deps . -w dist
+      - run: python -m pip install --no-index --find-links dist sagekit
+      - run: python -m unittest discover -s tests -v
+      - run: sagekit --help
+
+  integrations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.2-pg17
+        env:
+          POSTGRES_USER: sagekit
+          POSTGRES_PASSWORD: fixture
+          POSTGRES_DB: sagekit
+        options: >-
+          --health-cmd "pg_isready -U sagekit"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: richgo/forge-kit
+          ref: e8b84fed59fba4240d885d7f3e043ba902936126
+          path: .forgekit-fixture
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+      - run: python -m pip install '.[faiss,mcp,postgres,qdrant]'
+      - run: python -m pip install 'torch==2.9.1' --index-url https://download.pytorch.org/whl/cpu
+      - run: python -m pip install 'venn-vdm @ git+https://github.com/markrussinovich/venn-vdm.git@ad97513f1cc1fc5abc886f195d17e6145776e091'
+      - run: python -m pip check
+      - run: python -m unittest discover -s tests -v
+        env:
+          SAGEKIT_TEST_POSTGRES: postgresql://sagekit:fixture@localhost:5432/sagekit
+          SAGEKIT_TEST_FORGEKIT: .forgekit-fixture
+
+      - run: python -m pip install 'apmx @ git+https://github.com/danielmeppiel/apmx.git@fae2067a0dc6ff07beda714015ff9e648f41ce63'
+      - name: Run and independently replay the SageKit APMX contract
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/agent"
+          printf '#!/bin/sh\nexec python "%s" "$@"\n' "$PWD/tests/fixtures/apmx_copilot.py" > "$RUNNER_TEMP/agent/copilot"
+          chmod +x "$RUNNER_TEMP/agent/copilot"
+          export PATH="$RUNNER_TEMP/agent:$PATH"
+          stage="$(mktemp -d)"
+          cp -a integrations/forgekit/. "$stage/"
+          cp examples/gate-required.json "$stage/sagekit-policy.json"
+          cp .forgekit-fixture/examples/requirements.json "$stage/requirements.json"
+          cp .forgekit-fixture/architecture/slice.json "$stage/architecture.json"
+          sed -i '/sagekit-policy.json/a\  - requirements.json\n  - architecture.json\n  - corpus/knowledge.jsonl' \
+            "$stage/contracts/contextual-knowledge.contract.md"
+          cd "$stage"
+          sagekit add "$GITHUB_WORKSPACE/examples/adr.json"
+          python -c 'import hashlib,json; from pathlib import Path; print(json.dumps({n: hashlib.sha256(Path(n).read_bytes()).hexdigest() for n in ("requirements.json", "architecture.json")}))' > digests.json
+          sagekit pin digests.json > sagekit-pin.json
+          apmx . --plan
+          apmx . --allow-host-access --allow-unproven-inputs
+          receipt="$(find .apm/chains -name receipt.intoto.jsonl -print -quit)"
+          test -n "$receipt"
+          apmx check "$receipt" .
+          printf '%s\n' '{}' > architecture.json
+          rejected=0
+          apmx check "$receipt" . || rejected=$?
+          test "$rejected" -eq 20

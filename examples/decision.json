@@ -1,0 +1,6 @@
+{
+  "kind": "noul",
+  "instructions": "Does the checkout retry path preserve idempotency?",
+  "state": {"checkout": "Retry writes with a stable request identifier."},
+  "minimum_confidence": 0.6
+}
