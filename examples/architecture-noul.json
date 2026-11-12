@@ -1,0 +1,7 @@
+{
+  "kind": "noul",
+  "instructions": "Does the proposed publisher retry design preserve the event ID across every retry?",
+  "state": {
+    "design": "Create the event ID when the order is committed. Save it with the event. Every retry reads and republishes that stored ID."
+  }
+}
