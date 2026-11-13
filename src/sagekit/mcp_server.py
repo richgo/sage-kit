@@ -32,9 +32,13 @@ def create_mcp(application, credentials, token, remote=None):
         return dispatch("add", {"record": record})
 
     @server.tool()
-    def search_knowledge(query: str, revision: str | None = None, limit: int = 10) -> list[dict]:
+    def search_knowledge(query: str, revision: str | None = None, limit: int = 10,
+                         context: dict | None = None) -> list[dict]:
         """Find exact and semantically related source evidence."""
-        return dispatch("query", {"query": query, "revision": revision, "limit": limit})
+        params = {"query": query, "revision": revision, "limit": limit}
+        if context is not None:
+            params["context"] = context
+        return dispatch("query", params)
 
     @server.tool()
     def decide(request: dict, revision: str | None = None) -> dict:

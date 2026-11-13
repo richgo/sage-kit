@@ -97,22 +97,57 @@ class Router:
         self.fallback = fallback
 
     def decide(self, request: DecisionRequest, *, revision=None, groups=None) -> dict:
+        return self.decide_many({"sagekit": request}, revision=revision, groups=groups)["sagekit"]
+
+    def decide_many(self, requests: dict[str, DecisionRequest], *, revision=None, groups=None,
+                    context=None) -> dict[str, dict]:
+        revision = revision if revision is not None else self.search.repo.snapshot()
+        decisions = {}
+        pending = {}
+        for key, request in requests.items():
+            envelope, evidence = self._resolve(request, revision, groups, context)
+            decisions[key] = envelope
+            if evidence is not None:
+                pending[key] = (request, evidence)
+        if pending and self.fallback:
+            batch = getattr(self.fallback, "decide_many", None)
+            if batch:
+                try:
+                    answers = batch(pending)
+                except ProviderUnavailable:
+                    answers = dict.fromkeys(pending, "unavailable")
+            else:
+                answers = {}
+                for key, (request, evidence) in pending.items():
+                    try:
+                        answers[key] = self.fallback.decide(request, evidence)
+                    except ProviderUnavailable:
+                        answers[key] = "unavailable"
+            for key in pending:
+                result = answers.get(key)
+                if result == "unavailable":
+                    decisions[key]["attempts"].append({"provider": "jev", "status": "unavailable"})
+                elif result:
+                    decisions[key].update(result, status="answered")
+                else:
+                    decisions[key]["attempts"].append({"provider": "jev", "status": "abstained"})
+        return decisions
+
+    def _resolve(self, request: DecisionRequest, revision, groups, context) -> tuple[dict, list | None]:
         from .ledger import eligible_cases
 
         repo = self.search.repo
-        revision = revision if revision is not None else repo.snapshot()
         envelope = {"schema": 1, "snapshot": revision, "request_id": digest(asdict(request)),
                     "kind": request.kind, "embedding_profile": self.search.embedder.profile.key,
                     "attempts": [], "evidence": []}
         failures = request.policy_failures()
         if failures:
-            return {**envelope, "status": "denied", "provider": "policy", "failed_fields": failures}
-
-
+            return {**envelope, "status": "denied", "provider": "policy", "failed_fields": failures}, None
         if self.precedent and request.family and request.minimum_confidence > 0:
             envelope["attempts"].append({"provider": "venn", "status": "uncalibrated"})
         elif self.precedent and request.family:
-            cases = eligible_cases(repo, revision, groups, request.family, request.metric, request.criteria)
+            cases = eligible_cases(repo, revision, groups, request.family, request.metric,
+                                   request.criteria, context=context)
             try:
                 result = self.precedent.decide(request, cases, self.search) if cases else None
             except ProviderUnavailable:
@@ -122,18 +157,9 @@ class Router:
                     sources = {case.id: case.source.as_dict() for case in cases}
                     envelope["evidence"].extend({"id": key, "source": sources[key]}
                                                 for key in result["evidence_ids"] if key in sources)
-                    return {**envelope, **result, "status": "answered"}
+                    return {**envelope, **result, "status": "answered"}, None
                 envelope["attempts"].append({"provider": "venn", "status": "insufficient"})
-        evidence = self.search.query(request.instructions, revision=revision, groups=groups)
+        evidence = self.search.query(request.instructions, revision=revision, groups=groups, context=context)
         envelope["evidence"] = [{"id": hit["record"]["id"], "source": hit["record"]["source"]}
                                 for hit in evidence]
-        if self.fallback:
-            try:
-                result = self.fallback.decide(request, evidence)
-            except ProviderUnavailable:
-                envelope["attempts"].append({"provider": "jev", "status": "unavailable"})
-            else:
-                if result:
-                    return {**envelope, **result, "status": "answered"}
-                envelope["attempts"].append({"provider": "jev", "status": "abstained"})
-        return {**envelope, "status": "abstained", "provider": None}
+        return {**envelope, "status": "abstained", "provider": None}, evidence

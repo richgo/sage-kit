@@ -8,6 +8,32 @@ from sagekit.providers import JevProvider
 
 
 class JevWireContract(unittest.TestCase):
+    def test_batches_nouls_and_choice_with_the_same_state_and_evidence(self):
+        calls = []
+
+        class Provider(JevProvider):
+            def call(self, payload):
+                calls.append(payload)
+                return {"model": "fixture", "answers": {
+                    "coverage": {"type": "noul", "noul": .95},
+                    "isolation": {"type": "noul", "noul": .9},
+                    "action": {"type": "choice", "choice": "pass", "confidence": .8,
+                               "probabilities": {"pass": .9, "hold": .1}},
+                }}
+
+        provider = Provider("http://127.0.0.1:1/v1/systemone", None)
+        state = {"service": "checkout"}
+        answers = provider.decide_many({
+            "coverage": (DecisionRequest("noul", "Are the tests sufficient?", state), []),
+            "isolation": (DecisionRequest("noul", "Is the run isolated?", state), []),
+            "action": (DecisionRequest("choice", "Choose an action", state,
+                                       {"pass": "Proceed", "hold": "Review"}), []),
+        })
+        self.assertEqual(1, len(calls))
+        self.assertEqual({"coverage", "isolation", "action"}, set(calls[0]["questions"]))
+        self.assertEqual("pass", answers["action"]["value"])
+        self.assertEqual(.95, answers["coverage"]["value"])
+
     def test_local_jev_compatible_endpoint_and_invalid_response(self):
         requests = []
 

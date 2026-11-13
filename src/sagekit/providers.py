@@ -52,24 +52,51 @@ class JevProvider:
         return post_json(self.endpoint, payload, self.api_key)
 
     def decide(self, request: DecisionRequest, evidence: list[dict]) -> dict | None:
-        question = {"type": request.kind, "instructions": request.instructions}
-        if request.criteria is not None:
-            question["criteria"] = request.criteria
-        records = [item["record"] for item in evidence if self.allow_restricted_evidence or not item["record"]["acl"]]
-        payload = {"state": {"context": request.state, "evidence": records},
-                   "questions": {"sagekit": question}}
+        result = self.decide_many({"sagekit": (request, evidence)})["sagekit"]
+        if result == "unavailable":
+            raise ProviderUnavailable("Jev request failed or returned an invalid answer")
+        return result
+
+    def decide_many(self, requests: dict[str, tuple[DecisionRequest, list[dict]]]) -> dict:
+        batches = {}
+        for key, (request, evidence) in requests.items():
+            records = [item["record"] for item in evidence
+                       if self.allow_restricted_evidence or not item["record"]["acl"]]
+            state = {"context": request.state, "evidence": records}
+            _, batch = batches.setdefault(encode(state), (state, {}))
+            batch[key] = request
+        answers = {}
+        for state, batch in batches.values():
+            answers.update(self._call_batch(state, batch))
+        return answers
+
+    def _call_batch(self, state, requests):
+        questions = {}
+        for key, request in requests.items():
+            question = {"type": request.kind, "instructions": request.instructions}
+            if request.criteria is not None:
+                question["criteria"] = request.criteria
+            questions[key] = question
+        payload = {"state": state, "questions": questions}
         if self.model:
             payload["model"] = self.model
         try:
             response = self.call(payload)
-            answer = parse_answer(request, response["answers"]["sagekit"])
-        except (OSError, ValueError, KeyError, TypeError) as exc:
-            raise ProviderUnavailable("Jev request failed or returned an invalid answer") from exc
-        if answer["confidence"] < request.minimum_confidence:
-            return None
-        return {**answer, "provider": "jev-oss" if self.local else "jev",
-                "model": response.get("model", self.model),
-                "evidence_ids": [record["id"] for record in records]}
+        except (OSError, ValueError, KeyError, TypeError):
+            return dict.fromkeys(requests, "unavailable")
+        results = {}
+        for key, request in requests.items():
+            try:
+                answer = parse_answer(request, response["answers"][key])
+            except (ValueError, KeyError, TypeError):
+                results[key] = "unavailable"
+                continue
+            results[key] = None
+            if answer["confidence"] >= request.minimum_confidence:
+                results[key] = {**answer, "provider": "jev-oss" if self.local else "jev",
+                                "model": response.get("model", self.model),
+                                "evidence_ids": [record["id"] for record in state["evidence"]]}
+        return results
 
 
 class VennOutcomeStore:

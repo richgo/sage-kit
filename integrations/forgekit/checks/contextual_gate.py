@@ -45,6 +45,14 @@ def main():
             # This artefact certifies evidence availability. Typed advice stays in
             # the provider's separate audit envelope and is never an APMX handoff.
             fresh["decision_status"] = decision["status"]
+        if "judgments" in fresh:
+            # Replay the policy dispositions and evidence, not the probability estimates.
+            fresh["judgments"] = {
+                key: {field: outcome[field] for field in ("request_id", "kind", "status", "provider")}
+                for key, outcome in fresh["judgments"].items()
+            }
+            for record in fresh["evidence"]:
+                record.get("knowledge", {}).pop("answer", None)
         output = Path("sagekit-context.json")
         if args.check:
             reported = json.loads(output.read_text(encoding="utf-8"))

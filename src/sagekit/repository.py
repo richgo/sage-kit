@@ -35,6 +35,10 @@ def validate_append(record: Record, previous: dict[str, Record], replaced: set[s
             raise ValueError("supersession requires a record with the same kind and ACL")
         if target.id in replaced:
             raise ValueError("record already superseded")
+        scope = record.knowledge.authority_scope() if record.knowledge else None
+        target_scope = target.knowledge.authority_scope() if target.knowledge else None
+        if scope != target_scope:
+            raise ValueError("supersession requires the same knowledge authority and scope")
 
 
 def visible_records(records: list[Record], groups: set[str] | None,

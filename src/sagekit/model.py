@@ -3,6 +3,8 @@ import hashlib
 import json
 from typing import Any
 
+from .knowledge import Knowledge
+
 
 def encode(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
@@ -51,6 +53,7 @@ class Record:
     supersedes: str | None = None
     links: tuple[str, ...] = ()
     metadata: dict = field(default_factory=dict)
+    knowledge: Knowledge | None = None
 
     def __post_init__(self):
         if not isinstance(self.kind, str) or self.kind not in KINDS:
@@ -68,6 +71,8 @@ class Record:
             raise ValueError("invalid record links")
         if self.supersedes is not None and not is_digest(self.supersedes):
             raise ValueError("invalid superseded record ID")
+        if self.knowledge is not None and not isinstance(self.knowledge, Knowledge):
+            raise ValueError("invalid typed knowledge")
         object.__setattr__(self, "acl", tuple(sorted(set(self.acl))))
         object.__setattr__(self, "links", tuple(sorted(set(self.links))))
         object.__setattr__(self, "metadata", json.loads(encode(self.metadata)))
@@ -77,12 +82,15 @@ class Record:
         return digest(self._payload())
 
     def _payload(self) -> dict:
-        return {
+        payload = {
             "schema": 1, "kind": self.kind, "title": self.title, "body": self.body,
             "source": self.source.as_dict(), "acl": list(self.acl),
             "supersedes": self.supersedes, "links": list(self.links),
             "metadata": self.metadata,
         }
+        if self.knowledge is not None:
+            payload["knowledge"] = self.knowledge.as_dict()
+        return payload
 
     def as_dict(self) -> dict:
         return {**self._payload(), "id": self.id}
@@ -94,6 +102,8 @@ class Record:
             raise ValueError("unsupported record schema")
         identifier = fields.pop("id", None)
         fields["source"] = Source(**fields["source"])
+        if "knowledge" in fields:
+            fields["knowledge"] = Knowledge(**fields["knowledge"])
         record = cls(**fields)
         if identifier is not None and identifier != record.id:
             raise ValueError("record ID does not match its contents")

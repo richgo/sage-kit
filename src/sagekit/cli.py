@@ -27,6 +27,7 @@ def parser():
     query.add_argument("query")
     query.add_argument("--revision")
     query.add_argument("--limit", type=int, default=10)
+    query.add_argument("--context", type=Path)
     for name in ("add", "decide", "approve", "observe", "promote", "sign-receipt",
                  "backup", "restore", "export-public", "benchmark", "pin"):
         action = sub.add_parser(name)
@@ -95,7 +96,10 @@ def run(args):
     if name == "list":
         return dispatch(name, {"revision": args.revision, "history": args.history})
     if name == "query":
-        return dispatch(name, {"query": args.query, "revision": args.revision, "limit": args.limit})
+        params = {"query": args.query, "revision": args.revision, "limit": args.limit}
+        if args.context:
+            params["context"] = load(args.context)
+        return dispatch(name, params)
     if name == "ingest":
         record = ingest(args.file, args.kind, args.revision, uri=args.uri,
                         acl=tuple(args.acl), supersedes=args.supersedes)
