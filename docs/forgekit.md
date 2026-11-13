@@ -1,5 +1,15 @@
 # SageKit in ForgeKit
 
+ForgeKit's hosted SageKit bridge runs optional requirements and release
+gates around its native APMX workflow. It pins the reviewed request and
+product requirements, plus the OpenSpec binding and change artifacts when
+present. The release gate checks that those inputs still match the pin and
+binds promotion evidence to the independently verified APMX receipt.
+Configure the hosted path using the
+[ForgeKit SageKit runbook](https://github.com/richgo/forge-kit/blob/main/docs/sagekit.md).
+
+## Compose a contextual gate in APMX
+
 The versioned [APM package](../integrations/forgekit/apm.yml) exports an
 [APMX contract](../integrations/forgekit/contracts/contextual-knowledge.contract.md)
 and verifier. Reference `richgo/sage-kit/integrations/forgekit#COMMIT` using a
@@ -36,7 +46,7 @@ sagekit gate-check sagekit-policy.json --pin sagekit-pin.json > sagekit-context.
 
 A policy takes a `stage`, contextual `query`, optional `minimum_evidence`
 (default 1), `exact_ids`, expected input digest map in `inputs`, and optional
-typed `decision` request. The caller computes the expected input digests from
+typed `decision` request or scoped `context` with named `questions`. The caller computes the expected input digests from
 the approved artifacts. Each stage's context points to immutable source
 revisions. The parent pipeline's independent verification remains the
 authority for release and completion. The APMX handoff includes evidence and
