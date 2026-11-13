@@ -82,17 +82,18 @@ def accepted(request, rule, value):
     return value >= expected if rule["op"] == "min" else value <= expected
 
 
-def evaluate_questions(app, principal, questions, context, revision, records):
+def evaluate_questions(app, principal, questions, context, pinned, records):
     judgments = {}
     pending = {}
+    request_ids = {key: digest({"request": asdict(request), "inputs": pinned["inputs"]})
+                   for key, (request, _) in questions.items()}
     for key, (request, _) in questions.items():
-        request_id = digest(asdict(request))
         failures = request.policy_failures()
         if failures:
             judgments[key] = {"status": "denied", "provider": "policy", "failed_fields": failures}
             continue
         answers = {record.id: record.knowledge.answer["value"] for record in records.values()
-                   if record.knowledge.answer and record.knowledge.answer["request_id"] == request_id}
+                   if record.knowledge.answer and record.knowledge.answer["request_id"] == request_ids[key]}
         if not answers:
             pending[key] = request
             continue
@@ -102,11 +103,11 @@ def evaluate_questions(app, principal, questions, context, revision, records):
         if not valid or any(answer != value for answer in answers.values()):
             outcome = {"status": "conflict"}
         judgments[key] = {**outcome, "provider": "authority", "evidence_ids": sorted(answers)}
-    judgments.update(app.router.decide_many(pending, revision=revision, groups=principal.groups,
+    judgments.update(app.router.decide_many(pending, revision=pinned["revision"], groups=principal.groups,
                                             context=context))
     for key, judgment in judgments.items():
         request, rule = questions[key]
-        judgment["request_id"] = digest(asdict(request))
+        judgment["request_id"] = request_ids[key]
         judgment["kind"] = request.kind
         if judgment["status"] == "answered":
             judgment["status"] = "accepted" if accepted(request, rule, judgment.get("value")) else "rejected"
@@ -158,7 +159,7 @@ def check_gate(app, principal, policy: dict, pinned: dict | None) -> dict:
     ids = found.union(hit["record"]["id"] for hit in evidence)
     judgments = {}
     if questions:
-        judgments = evaluate_questions(app, principal, questions, context, revision, records)
+        judgments = evaluate_questions(app, principal, questions, context, pinned, records)
         envelope["judgments"] = judgments
     evidence_ids = ids.union(*(set(item.get("evidence_ids", ())) for item in judgments.values()))
     evidence_ids.intersection_update(records)

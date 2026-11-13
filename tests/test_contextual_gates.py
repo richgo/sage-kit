@@ -37,6 +37,7 @@ class ContextualGates(unittest.TestCase):
         self.app = Application(self.repo, self.search, Router(self.search, fallback=self.fallback))
         self.reviewer = Principal(scopes=frozenset({"write", "approve", "decide"}))
         self.scope = {"product": "storefront", "repository": "example/store", "component": "checkout"}
+        self.inputs = {"policy": digest("reviewed")}
         self.request = {"kind": "noul", "instructions": "Checkout has approval", "state": {"ready": True}}
         self.policy = {
             "mode": "required", "stage": "release", "query": "Checkout has approval",
@@ -48,7 +49,10 @@ class ContextualGates(unittest.TestCase):
     def record(self, authority, value=None, scope=None, **options):
         knowledge = {"authority": authority, "scope": self.scope if scope is None else scope}
         if value is not None:
-            knowledge["answer"] = {"request_id": digest(asdict(DecisionRequest(**self.request))), "value": value}
+            knowledge["answer"] = {
+                "request_id": digest({"request": asdict(DecisionRequest(**self.request)), "inputs": self.inputs}),
+                "value": value,
+            }
         knowledge.update(options.pop("knowledge", {}))
         return {
             "kind": "adr", "title": "Checkout has approval", "body": "Checkout approved",
@@ -59,8 +63,8 @@ class ContextualGates(unittest.TestCase):
     def add(self, authority, value=None, **options):
         return self.app.add(self.reviewer, self.record(authority, value, **options))["id"]
 
-    def evaluate(self, policy=None, revision=None):
-        pinned = pin(revision or self.repo.snapshot(), {"policy": digest("reviewed")},
+    def evaluate(self, policy=None, revision=None, inputs=None):
+        pinned = pin(revision or self.repo.snapshot(), inputs or self.inputs,
                      self.search.embedder.profile.key)
         return self.app.gate_check(self.reviewer, policy or self.policy, pinned)
 
@@ -78,6 +82,13 @@ class ContextualGates(unittest.TestCase):
         legacy = Record("adr", "Legacy decision", "Text", Source("git:legacy", "1"))
         self.assertEqual("796f473908a682e6d77c1aaa7f6b31b40c7fc2e59845fb79e1d12e58cf4fcaaa",
                          legacy.id)
+
+    def test_changed_approved_inputs_invalidate_exact_answer_reuse(self):
+        self.add("authoritative", 1)
+        self.fallback.values.clear()
+        result = self.evaluate(inputs={"policy": digest("revised")})
+        self.assertEqual("block", result["disposition"])
+        self.assertEqual("unavailable", result["judgments"]["approval"]["status"])
 
     def test_filters_out_of_scope_expired_superseded_and_candidate_records(self):
         expired = self.add("authoritative", 0, knowledge={"valid_until": "2026-11-13"})

@@ -102,8 +102,8 @@ The approval identity needs both `write` and `approve` scopes to add
 authoritative or precedent knowledge. Approvers can supersede a record
 within its kind, ACL, authority and scope. For an exact answer, obtain the
 `request_id` from the gate's judgment for the reviewed request. The digest
-includes its state, rubric, constraints and confidence threshold, so any
-change to the request selects fresh evaluation. A required gate fails closed
+includes the typed request and the pinned map of approved input hashes.
+Changes to either select fresh evaluation. A required gate fails closed
 when applicable authorities disagree. When there is no exact approved answer,
 SageKit attempts Venn for eligible Choice requests, then asks Jev if configured.
 Jev groups unresolved questions that share the same state and visible evidence.
