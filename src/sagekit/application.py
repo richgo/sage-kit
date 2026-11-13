@@ -3,6 +3,7 @@ from html import escape
 from pathlib import Path
 
 from .decisions import DecisionRequest, Router
+from .knowledge import Context, Knowledge
 from .ledger import LEDGER_KINDS, approve, observe
 from .model import Record, Source, encode
 from .repository import Repository, atomic_text
@@ -69,19 +70,23 @@ class Application:
         principal.allow_acl(entry.acl)
         if entry.kind in LEDGER_KINDS:
             raise ValueError("use the dedicated outcome ledger commands")
+        if entry.knowledge and entry.knowledge.authority != "candidate":
+            principal.require("approve")
         return {"id": entry.id, "revision": self.append(entry)}
 
-    def query(self, principal, query, revision=None, limit=10):
-        return self.search.query(query, revision=revision, groups=principal.groups, limit=limit)
+    def query(self, principal, query, revision=None, limit=10, context=None):
+        return self.search.query(query, revision=revision, groups=principal.groups, limit=limit,
+                                 context=Context(**context) if context is not None else None)
 
     def decide(self, principal, request, revision=None):
         principal.require("decide")
         return self.router.decide(DecisionRequest(**request), revision=revision, groups=principal.groups)
 
-    def approve(self, principal, family, option, context, origin, source, acl=()):
+    def approve(self, principal, family, option, context, origin, source, acl=(), knowledge=None):
         principal.require("approve")
         principal.allow_acl(acl)
-        return approve(self.repo, family, option, context, origin, Source(**source), acl, append=self.append).as_dict()
+        return approve(self.repo, family, option, context, origin, Source(**source), acl, append=self.append,
+                       knowledge=Knowledge(**knowledge) if knowledge is not None else None).as_dict()
 
     def observe(self, principal, choice_id, verification_id, metric, utility, source, acl=()):
         principal.require("observe")
@@ -91,7 +96,8 @@ class Application:
     def gate_check(self, principal, policy, pin=None):
         from .gates import check_gate
 
-        if isinstance(policy, dict) and policy.get("decision") and policy.get("mode") != "off":
+        if (isinstance(policy, dict) and (policy.get("decision") or policy.get("questions"))
+                and policy.get("mode") != "off"):
             principal.require("decide")
         return check_gate(self, principal, policy, pin)
 

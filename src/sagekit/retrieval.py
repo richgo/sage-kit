@@ -1,3 +1,4 @@
+from .knowledge import Context, applicable
 from .model import Record, is_digest
 from .repository import Repository
 from .vectors import Embedder, HashEmbedder, MemoryVectors, VectorStore, words
@@ -32,12 +33,13 @@ class Search:
         return "outcome-v1:" + record.id
 
     def query(self, query: str, *, revision: str | None = None, groups: set[str] | None = None,
-              limit: int = 10, minimum: float = 0.15) -> list[dict]:
+              limit: int = 10, minimum: float = 0.15, context: Context | None = None) -> list[dict]:
         if not isinstance(query, str) or not query.strip() or type(limit) is not int or not 1 <= limit <= 100:
             raise ValueError("query requires text and a limit from 1 to 100")
         if not 0 <= minimum <= 1:
             raise ValueError("invalid similarity threshold")
-        records = {record.id: record for record in self.repo.records(revision, groups)}
+        records = {record.id: record for record in self.repo.records(revision, groups)
+                   if applicable(record, context)}
         folded = query.strip().casefold()
         exact = sorted(record.id for record in records.values() if folded in {
             record.id, record.title.casefold(), record.source.uri.casefold(),

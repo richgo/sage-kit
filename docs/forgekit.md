@@ -43,6 +43,71 @@ authority for release and completion. The APMX handoff includes evidence and
 decision availability. The separate CLI or API audit envelope carries any
 model advice.
 
+## Evaluate scoped knowledge and gate questions
+
+Use `context` with a reviewed `scope` and an explicit UTC date, `as_of`.
+Scope can name a product, a repository and a component. Every field on a
+record must match the query context. An ADR scoped to a product can apply
+across its repositories. SageKit also checks the record's ACL, validity dates
+and supersession at the pinned corpus revision. `valid_from` is inclusive and
+`valid_until` is exclusive. Keep the evaluation date in the reviewed policy
+when replaying evidence.
+
+```json
+{
+  "mode": "required",
+  "stage": "release",
+  "query": "Checkout API compatibility",
+  "minimum_evidence": 0,
+  "context": {
+    "scope": {"product": "store", "repository": "owner/store", "component": "checkout"},
+    "as_of": "2026-11-13"
+  },
+  "questions": {
+    "compatibility": {
+      "request": {
+        "kind": "noul",
+        "instructions": "Do the approved artifacts demonstrate checkout API compatibility?",
+        "state": {"contract_check_passed": true},
+        "constraints": [{"field": "contract_check_passed", "op": "eq", "value": true}],
+        "minimum_confidence": 0.8
+      },
+      "accept": {"op": "min", "value": 0.9}
+    }
+  }
+}
+```
+
+Add named `noul`, `choice` and `score` requests to `questions`. A Choice
+acceptance rule uses `eq` with an option ID. Numeric Noul and Score rules
+support `min`, `max` and `eq`. The caller supplies independently verified
+values for deterministic constraints. SageKit evaluates these before any
+provider call. The result contains a disposition, per-question statuses and
+the pinned source references. Required gates block on a failed constraint,
+conflicting authoritative answers, rejected answers, or insufficient or
+unavailable evidence. Advisory gates report these outcomes for review.
+The older single `decision` field continues to work on unscoped policies.
+
+Add `knowledge` to a sourced record to give it an `authority`, `scope` and
+optional validity dates. Unscoped gates continue to use legacy records.
+Use `sagekit query TEXT --context CONTEXT.json` to inspect applicable records.
+
+| Authority | Use |
+| --- | --- |
+| `authoritative` | Approved policy or decision. An optional `answer` with `request_id` and typed `value` can resolve the exact question without a model call. |
+| `precedent` | Approved source evidence. The Venn Choice route uses scoped, verified operational outcomes. |
+| `candidate` | Proposed knowledge for review. Visible in the corpus inventory according to its ACL. |
+
+The approval identity needs both `write` and `approve` scopes to add
+authoritative or precedent knowledge. Approvers can supersede a record
+within its kind, ACL, authority and scope. For an exact answer, obtain the
+`request_id` from the gate's judgment for the reviewed request. The digest
+includes its state, rubric, constraints and confidence threshold, so any
+change to the request selects fresh evaluation. A required gate fails closed
+when applicable authorities disagree. When there is no exact approved answer,
+SageKit attempts Venn for eligible Choice requests, then asks Jev if configured.
+Jev groups unresolved questions that share the same state and visible evidence.
+
 ## Promote verified changes
 
 The trusted verifier produces a JSON promotion request after the pipeline has
@@ -91,6 +156,9 @@ the same receipt returns the original ID and event revision. Conflicting
 content for an existing pipeline/run is rejected. Publication can be retried
 independently using the original verified payload and pin.
 
+To publish a scoped verified change, include `change.knowledge` in the signed
+payload with `authority` set to `precedent`, a scope and any validity dates.
+
 ## Record operational outcomes
 
 Use `sagekit approve FILE` to record the chosen option before pinning the
@@ -102,3 +170,6 @@ numeric `utility`, `source`, and optional `acl`. Measure the same utility
 consistently across alternatives in a family and specify the decision goal
 as `maximize` or `minimize`. The Venn route uses this observed evidence.
 A verified build by itself contributes no measured utility.
+For a scoped gate, supply `knowledge` with `authority: "precedent"` and the
+applicable scope when approving the choice. Observations inherit that scope
+and validity window.
